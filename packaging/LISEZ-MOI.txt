@@ -1,0 +1,113 @@
+﻿HRD Logbook -> Wavelog (HRDtoWavelog)
+© 2026 F4MAJ / Jean-Bernard — licence MIT — https://github.com/LesF4/hrd-wavelog-bridge
+
+(English below)
+
+=====================================================================
+ FRANÇAIS — CONFIGURATION (une seule fois, 3 minutes)
+=====================================================================
+
+Chaque nouveau QSO enregistré dans HRD Logbook (à la main, depuis
+WSJT-X, JS8Call…) part automatiquement dans ton Wavelog. C'est HRD qui
+envoie le QSO à l'app : elle n'ouvre pas ton fichier de log.
+
+1) Dans HRD Logbook : activer l'envoi des QSO
+   - menu Tools > Configure > QSO Forwarding
+   - partie envoi UDP (« UDP Send ») : coche l'envoi des QSO,
+     adresse 127.0.0.1 (ou localhost), port 12060
+   - OK
+
+2) Dans Wavelog (navigateur) : créer une clé API
+   - menu de ton compte (en haut à droite) > « API Keys »
+   - crée une nouvelle clé « Read & Write » (lecture et écriture)
+   - copie la clé
+
+3) Dans l'app : bouton « Réglages… »
+   - Port UDP : 12060 (le même que dans HRD)
+   - Adresse : l'adresse de ton Wavelog, par ex. https://wavelog.monsite.fr
+   - Clé API : colle la clé de l'étape 2
+   - clique « Tester et charger les stations », choisis ta station
+   - coche « Lancer automatiquement au démarrage de Windows »
+   - Enregistrer
+
+Les deux voyants en haut de la fenêtre doivent être VERTS.
+C'est tout : chaque QSO enregistré dans HRD part seul vers Wavelog.
+Si Internet est coupé, les QSO attendent (⏳) et partent dès le retour
+de la connexion.
+
+IMPORTANT : l'app doit être lancée au moment où tu enregistres le QSO
+(HRD ne l'envoie qu'une fois), d'où le lancement avec Windows. Si des
+QSO ont été enregistrés pendant qu'elle était fermée, le bouton
+« Envoyer tout le log HRD… » les rattrape (Wavelog ignore les doublons).
+
+EN CAS DE SOUCI
+- Voyant HRD rouge : le port UDP est déjà utilisé. Choisis-en un autre
+  dans Réglages et mets le même dans HRD (QSO Forwarding).
+- Voyant HRD vert mais aucun QSO n'arrive : vérifie l'étape 1 (envoi
+  UDP activé dans HRD, vers 127.0.0.1, même port que l'app).
+- Voyant Wavelog rouge : vérifie Internet et l'adresse de Wavelog.
+- « clé API invalide » ou « lecture seule » : crée une clé
+  « Read & Write » dans Wavelog.
+- ✖ Refusé par Wavelog : la raison est affichée dans la liste.
+- Antivirus (Bitdefender notamment) qui bloque l'app : ajoute une
+  exception pour HRDtoWavelog.exe et autorise-le dans le pare-feu de
+  l'antivirus. L'app n'est pas signée, c'est une fausse alerte.
+- Au premier lancement, Windows peut afficher « Windows a protégé votre
+  ordinateur » : « Informations complémentaires » puis « Exécuter quand
+  même ».
+
+Aide, questions, idées : https://github.com/LesF4/hrd-wavelog-bridge/issues
+
+
+=====================================================================
+ ENGLISH — SETUP (one time, 3 minutes)
+=====================================================================
+
+Every new QSO logged in HRD Logbook (by hand, from WSJT-X, JS8Call…)
+is automatically sent to your Wavelog. HRD itself sends the QSO to the
+app: the app does not open your log file.
+
+1) In HRD Logbook: turn on QSO sending
+   - Tools > Configure > QSO Forwarding
+   - UDP send section ("UDP Send"): enable sending QSOs,
+     address 127.0.0.1 (or localhost), port 12060
+   - OK
+
+2) In Wavelog (web browser): create an API key
+   - your account menu (top right) > "API Keys"
+   - create a new "Read & Write" key
+   - copy the key
+
+3) In the app: "Settings…" button
+   - UDP port: 12060 (the same as in HRD)
+   - Address: your Wavelog address, e.g. https://wavelog.mysite.org
+   - API key: paste the key from step 2
+   - click "Test and load stations", pick your station
+   - tick "Start automatically with Windows"
+   - Save
+
+Both lights at the top of the window must be GREEN.
+That's it: every QSO logged in HRD goes to Wavelog by itself.
+If the Internet is down, QSOs wait (⏳) and are sent once it is back.
+
+IMPORTANT: the app must be running when you log the QSO (HRD sends it
+only once), hence starting with Windows. If QSOs were logged while it
+was closed, "Send the whole HRD log…" catches up (Wavelog skips dupes).
+
+TROUBLESHOOTING
+- HRD light red: the UDP port is busy. Pick another one in Settings and
+  set the same one in HRD (QSO Forwarding).
+- HRD light green but no QSO arrives: check step 1 (UDP send on in HRD,
+  to 127.0.0.1, same port as the app).
+- Wavelog light red: check the Internet and the Wavelog address.
+- "invalid API key" or "read-only": create a "Read & Write" key.
+- ✖ Rejected by Wavelog: the reason is shown in the list.
+- Antivirus (Bitdefender in particular) blocking the app: add an
+  exception for HRDtoWavelog.exe and allow it in the antivirus firewall.
+  The app is unsigned; this is a false alarm.
+- On first start Windows may show "Windows protected your PC":
+  "More info" then "Run anyway".
+
+Help, questions, ideas: https://github.com/LesF4/hrd-wavelog-bridge/issues
+
+73 de F4MAJ
