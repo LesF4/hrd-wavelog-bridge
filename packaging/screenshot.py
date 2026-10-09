@@ -13,6 +13,7 @@ from hrdwl import app  # noqa: E402
 
 lang, out = sys.argv[1], sys.argv[2]
 delay = int(sys.argv[3]) if len(sys.argv) > 3 else 20000
+app.refresh_autostart = lambda: None  # ne pas toucher au démarrage auto de l'app installée
 root = tk.Tk()
 a = app.App(root)
 a.cfg["language"] = lang
@@ -22,6 +23,8 @@ root.attributes("-topmost", True)
 
 
 def shot():
+    a.hrd_state = (True, 12060)  # la démo écoute un autre port ; on affiche le port par défaut
+    a.set_indicators()
     root.update()
     x, y = root.winfo_rootx(), root.winfo_rooty()
     ImageGrab.grab((x, y, x + root.winfo_width(), y + root.winfo_height()), all_screens=True).save(out)
