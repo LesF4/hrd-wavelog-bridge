@@ -108,6 +108,74 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual(set(i18n.TEXTS["fr"]), set(i18n.TEXTS["en"]))
 
 
+class ConfigSafetyTests(unittest.TestCase):
+    """Un fichier momentanément illisible ne doit jamais faire repartir l'app de zéro."""
+
+    def setUp(self):
+        self.dir = core.data_dir()
+        self.cfg_path = os.path.join(self.dir, "config.json")
+        self.hist_path = os.path.join(self.dir, "history.json")
+        self.cleanup()
+
+    def tearDown(self):
+        self.cleanup()
+
+    def cleanup(self):
+        for p in (self.cfg_path, self.cfg_path + ".bak", self.hist_path):
+            if os.path.exists(p):
+                os.remove(p)
+
+    def good_cfg(self, station="5"):
+        return dict(core.DEFAULT_CONFIG, wavelog_url="https://wl.example.org", api_key="k", station_id=station)
+
+    def test_first_start_gives_defaults(self):
+        cfg = core.load_config(retries=2, delay=0)
+        self.assertFalse(cfg.get("_unreadable"))
+        self.assertFalse(core.is_configured(cfg))
+
+    def test_retries_while_file_is_temporarily_unreadable(self):
+        with open(self.cfg_path, "w") as f:
+            f.write("{pas fini")  # comme un fichier en cours d'écriture ou bloqué
+
+        def repair():
+            time.sleep(0.8)
+            core.save_config(self.good_cfg())
+        import threading
+        threading.Thread(target=repair).start()
+        cfg = core.load_config(retries=10, delay=0.3)
+        self.assertTrue(core.is_configured(cfg))
+        self.assertFalse(cfg.get("_unreadable"))
+
+    def test_backup_is_used_when_main_file_stays_broken(self):
+        core.save_config(self.good_cfg("5"))
+        core.save_config(self.good_cfg("5"))  # le premier devient la copie de secours
+        with open(self.cfg_path, "w") as f:
+            f.write("abîmé")
+        cfg = core.load_config(retries=2, delay=0)
+        self.assertEqual(cfg["station_id"], "5")
+
+    def test_unreadable_is_flagged_and_never_saved_over(self):
+        with open(self.cfg_path, "w") as f:
+            f.write("abîmé")
+        cfg = core.load_config(retries=2, delay=0)
+        self.assertTrue(cfg["_unreadable"])
+        with self.assertRaises(OSError):
+            core.save_config(cfg)
+        self.assertEqual(open(self.cfg_path).read(), "abîmé")  # rien n'a été écrasé
+
+    def test_internal_keys_are_not_written(self):
+        cfg = dict(self.good_cfg(), _note="interne")
+        core.save_config(cfg)
+        self.assertNotIn("_note", open(self.cfg_path, encoding="utf-8").read())
+
+    def test_unreadable_history_raises_instead_of_starting_empty(self):
+        with open(self.hist_path, "w") as f:
+            f.write("[{pas fini")
+        with self.assertRaises(core.HistoryUnreadable):
+            core.History(retries=2, delay=0)
+        self.assertEqual(open(self.hist_path).read(), "[{pas fini")
+
+
 class SyncTests(unittest.TestCase):
     def setUp(self):
         self.wl = fakes.FakeWavelog()

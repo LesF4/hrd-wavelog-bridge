@@ -120,6 +120,7 @@ TEXTS = {
         "progress_down": "Ajout dans HRD : {done} / {total}",
         "progress_up": "Envoi à Wavelog : {done} / {total}",
         "log_catch_up": "Rattrapage : {n} QSO enregistrés dans HRD pendant que l'app était fermée, envoyés vers Wavelog.",
+        "err_config_unreadable": "Les réglages de l'app sont momentanément illisibles (fichier bloqué, peut-être par l'antivirus au démarrage de Windows).\n\nRien n'a été modifié. Relance l'app dans une minute.\n\nSi le problème continue, regarde le dossier :\n{path}",
     },
     "en": {
         "status_sent": "✔ Sent to Wavelog",
@@ -236,6 +237,7 @@ TEXTS = {
         "progress_down": "Adding to HRD: {done} / {total}",
         "progress_up": "Sending to Wavelog: {done} / {total}",
         "log_catch_up": "Catch-up: {n} QSO(s) logged in HRD while the app was closed, being sent to Wavelog.",
+        "err_config_unreadable": "The app settings cannot be read right now (file locked, perhaps by the antivirus at Windows startup).\n\nNothing was changed. Start the app again in a minute.\n\nIf it keeps happening, check the folder:\n{path}",
     },
 }
 

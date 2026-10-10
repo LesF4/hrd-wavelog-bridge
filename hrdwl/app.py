@@ -90,11 +90,11 @@ def refresh_autostart():
 # --------------------------------------------------------------------------- application
 
 class App:
-    def __init__(self, root, start_minimized=False):
+    def __init__(self, root, start_minimized=False, cfg=None, history=None):
         self.root = root
-        self.cfg = core.load_config()
+        self.cfg = cfg if cfg is not None else core.load_config()
         set_language(self.cfg["language"])
-        self.history = core.History()
+        self.history = history if history is not None else core.History()
         self.events = queue.Queue()
         self.tray = None
         self.hrd_state = (None, "")
@@ -664,6 +664,21 @@ def main():
         root.withdraw()
         messagebox.showinfo(core.APP_TITLE, t("already_running"))
         return
+    cfg = core.load_config()
+    history = None
+    if not cfg.get("_unreadable"):
+        try:
+            history = core.History()
+        except core.HistoryUnreadable:
+            pass
+    if cfg.get("_unreadable") or history is None:
+        # Ne jamais démarrer « à vide » par-dessus des réglages ou un historique existants :
+        # on prévient et on s'arrête, sans rien modifier.
+        set_language(cfg.get("language", "auto") if not cfg.get("_unreadable") else "auto")
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showwarning(core.APP_TITLE, t("err_config_unreadable", path=core.data_dir()))
+        return
     root = tk.Tk()
-    App(root, start_minimized="--minimized" in sys.argv)
+    App(root, start_minimized="--minimized" in sys.argv, cfg=cfg, history=history)
     root.mainloop()

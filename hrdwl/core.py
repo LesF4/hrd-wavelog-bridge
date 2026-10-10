@@ -32,7 +32,7 @@ from .i18n import t
 
 APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
@@ -69,21 +69,52 @@ def data_dir():
     return path
 
 
-def load_config():
+def _read_json(path):
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("config.json n'est pas un objet JSON")
+    return data
+
+
+def load_config(retries=10, delay=0.5):
+    """Lit les réglages. Si le fichier existe mais est momentanément illisible (verrouillé par
+    l'antivirus au démarrage de Windows…), on réessaie, puis on prend la copie de secours.
+    Si rien n'est lisible, cfg["_unreadable"] = True : l'app ne doit surtout pas repartir de zéro
+    (elle écraserait les vrais réglages)."""
     cfg = dict(DEFAULT_CONFIG)
-    try:
-        with open(os.path.join(data_dir(), "config.json"), encoding="utf-8") as f:
-            cfg.update({k: v for k, v in json.load(f).items() if k in DEFAULT_CONFIG})
-    except (OSError, ValueError):
-        pass
+    path = os.path.join(data_dir(), "config.json")
+    backup = path + ".bak"
+    if not os.path.exists(path) and not os.path.exists(backup):
+        return cfg  # premier démarrage : pas encore de réglages
+    for attempt in range(max(1, retries)):
+        for candidate in ((path,) if attempt < retries - 1 else (path, backup)):
+            try:
+                data = _read_json(candidate)
+            except (OSError, ValueError):
+                continue
+            cfg.update({k: v for k, v in data.items() if k in DEFAULT_CONFIG})
+            return cfg
+        time.sleep(delay)
+    cfg["_unreadable"] = True
     return cfg
 
 
 def save_config(cfg):
+    """Écrit les réglages (fichier temporaire puis remplacement) en gardant une copie de secours
+    du dernier fichier valide. Les clés internes (« _… ») ne sont jamais écrites."""
+    if cfg.get("_unreadable"):
+        raise OSError("réglages illisibles : enregistrement refusé pour ne pas les écraser")
     path = os.path.join(data_dir(), "config.json")
+    data = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    try:
+        _read_json(path)
+        shutil.copy2(path, path + ".bak")  # le fichier actuel est valide : il devient la copie de secours
+    except (OSError, ValueError):
+        pass
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(data, f, indent=2)
     os.replace(tmp, path)
 
 
@@ -519,19 +550,31 @@ def compare_logs(hrd_qsos, wl_qsos):
 
 # --------------------------------------------------------------------------- historique
 
+class HistoryUnreadable(OSError):
+    """history.json existe mais reste illisible : l'app ne doit pas démarrer à vide."""
+
+
 class History:
     """Derniers QSO traités, persistés sur disque (liste affichée + file d'attente)."""
 
     MAX = 3000
 
-    def __init__(self):
+    def __init__(self, retries=10, delay=0.5):
         self.path = os.path.join(data_dir(), "history.json")
         self.lock = threading.Lock()
-        try:
-            with open(self.path, encoding="utf-8") as f:
-                self.items = json.load(f)
-        except (OSError, ValueError):
-            self.items = []
+        self.items = []
+        if os.path.exists(self.path):
+            # Momentanément illisible (antivirus au démarrage…) : on réessaie. Repartir d'une liste vide
+            # écraserait le vrai historique au premier enregistrement.
+            for attempt in range(max(1, retries)):
+                try:
+                    with open(self.path, encoding="utf-8") as f:
+                        self.items = json.load(f)
+                    break
+                except (OSError, ValueError):
+                    if attempt == retries - 1:
+                        raise HistoryUnreadable(self.path)
+                    time.sleep(delay)
         seen = set()
         for item in self.items:  # les identifiants de la 1.0 étaient des numéros
             key = base = str(item["hrd_key"])

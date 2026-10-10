@@ -1,5 +1,10 @@
 # Journal des versions / Changelog
 
+## 1.2.3 — 2026-10-10
+
+- **Les réglages ne peuvent plus « disparaître » au démarrage :** si le fichier de réglages est momentanément illisible (bloqué par l'antivirus juste après l'allumage du PC, par exemple), l'app réessaie pendant quelques secondes, puis utilise sa **copie de secours** (`config.json.bak`, mise à jour à chaque enregistrement). Elle n'ouvre plus jamais des Réglages vides par-dessus une configuration existante.
+- Même protection pour l'historique : s'il reste illisible, l'app affiche un message et s'arrête sans rien modifier, au lieu de repartir d'une liste vide.
+
 ## 1.2.2 — 2026-10-10
 
 - **La fenêtre ne peut plus se figer à cause de Windows ou d'Internet :** les notifications et l'icône près de l'horloge, ainsi que le test de connexion des Réglages, se font en arrière-plan. (Une fenêtre figée avait été fermée par Windows en plein trafic.)
