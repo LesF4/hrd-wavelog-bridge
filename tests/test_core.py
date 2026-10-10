@@ -90,6 +90,13 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual(core.fields_for_hrd(qsos[0]),
                          {"CALL": "K1AB", "QSO_DATE": "20261010", "TIME_ON": "1200", "BAND": "20m"})
 
+    def test_history_keys_stay_unique(self):
+        h = core.History()
+        h.items = []
+        f = {"CALL": "G0ABC", "QSO_DATE": "20250309", "TIME_ON": "142215"}
+        keys = [h.add("cmp:x", f, "pending")["hrd_key"] for _ in range(3)]
+        self.assertEqual(keys, ["cmp:x", "cmp:x#2", "cmp:x#3"])
+
     def test_same_keys_in_all_languages(self):
         self.assertEqual(set(i18n.TEXTS["fr"]), set(i18n.TEXTS["en"]))
 
@@ -124,10 +131,41 @@ class SyncTests(unittest.TestCase):
         self.con.close()
         self.wl.close()
 
-    def start_hrd(self, echo=True):
-        """Démarre le faux HRD (réception UDP) et y dirige l'app."""
-        self.receiver = fakes.FakeHRDReceiver(echo_port=self.port if echo else None)
+    def start_hrd(self, echo=True, crash_after=None):
+        """Démarre le faux HRD (réception UDP, enregistre dans le faux log) et y dirige l'app."""
+        self.receiver = fakes.FakeHRDReceiver(echo_port=self.port if echo else None, db_path=self.db,
+                                              crash_after=crash_after)
         self.cfg["hrd_in_port"] = self.receiver.port
+
+    @staticmethod
+    def qso(call, minute):
+        return {"CALL": call, "QSO_DATE": "20260221", "TIME_ON": "08%02d00" % minute, "BAND": "40m",
+                "FREQ": "7.080000", "MODE": "SSB"}
+
+    def test_bulk_to_hrd_one_by_one_with_progress(self):
+        self.cfg["download_enabled"] = False
+        self.start_hrd(echo=True)
+        old3 = {"CALL": "OLD3", "QSO_DATE": "20261009", "TIME_ON": "121330", "BAND": "20m"}  # déjà dans HRD
+        self.sync.add_missing([self.qso("REF1", 0), old3, self.qso("REF2", 5), self.qso("REF3", 9)], [])
+        self.assertTrue(wait_for(lambda: [i["status"] for i in self.items("down")] == ["imported"] * 4, 30))
+        self.assertEqual(self.receiver.calls(), ["REF1", "REF2", "REF3"])  # OLD3 n'est pas renvoyé
+        self.assertEqual(self.history.find("wl:" + core.qso_sig(old3))["message"], core.t("msg_already_in_hrd"))
+        progress = [e for e in list(self.events.queue) if e[0] == "progress" and e[1] == "down"]
+        self.assertEqual([e[2] for e in progress if e[2]], [1, 2, 3, 4])
+        self.assertEqual(progress[-1], ("progress", "down", None, None))
+        time.sleep(1)
+        self.assertEqual(self.items("up"), [])  # les échos de HRD ne repartent pas vers Wavelog
+
+    def test_hrd_crash_stops_and_flags_the_qso(self):
+        self.cfg["download_enabled"] = False
+        self.start_hrd(echo=False, crash_after=2)  # HRD plante à la réception du 2e QSO
+        self.sync.add_missing([self.qso("REF1", 0), self.qso("REF2", 5), self.qso("REF3", 9)], [])
+        self.assertTrue(wait_for(lambda: [i["status"] for i in self.items("down")] == ["imported", "error",
+                                                                                         "pending"], 30))
+        self.assertEqual(self.history.find("wl:" + core.qso_sig(self.qso("REF2", 5)))["message"],
+                         core.t("msg_hrd_closed_after"))
+        time.sleep(1.5)
+        self.assertEqual(self.receiver.calls(), ["REF1", "REF2"])  # rien n'est renvoyé en boucle
 
     def sent_calls(self):
         return sorted(q[0] for q in self.wl.qsos)

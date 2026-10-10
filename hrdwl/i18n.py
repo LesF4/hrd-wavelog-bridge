@@ -112,6 +112,13 @@ TEXTS = {
         "s_hrd_in_hint": "HRD → QSO Forwarding → réception UDP activée sur ce port (comme pour WSJT-X)",
         "s_dl_stations": "Stations suivies",
         "s_dl_stations_hint": "Clique sur « Tester et charger les stations » pour les afficher",
+        "msg_already_in_hrd": "déjà dans HRD",
+        "msg_hrd_no_confirm": "HRD n'a pas confirmé l'enregistrement : vérifie ce QSO dans HRD",
+        "msg_hrd_closed_after": "HRD s'est fermé juste après ce QSO : vérifie-le avant de le renvoyer",
+        "log_hrd_closed_after": "HRD Logbook s'est fermé juste après le QSO {call} : envoi interrompu. Ce QSO est marqué en erreur pour que tu le vérifies.",
+        "log_imported_progress": "Ajout dans HRD : {done} / {total}…",
+        "progress_down": "Ajout dans HRD : {done} / {total}",
+        "progress_up": "Envoi à Wavelog : {done} / {total}",
     },
     "en": {
         "status_sent": "✔ Sent to Wavelog",
@@ -220,6 +227,13 @@ TEXTS = {
         "s_hrd_in_hint": "HRD → QSO Forwarding → UDP receive on, on this port (as for WSJT-X)",
         "s_dl_stations": "Stations followed",
         "s_dl_stations_hint": "Click \"Test and load stations\" to show them",
+        "msg_already_in_hrd": "already in HRD",
+        "msg_hrd_no_confirm": "HRD did not confirm saving it: check this QSO in HRD",
+        "msg_hrd_closed_after": "HRD closed right after this QSO: check it before resending",
+        "log_hrd_closed_after": "HRD Logbook closed right after QSO {call}: sending stopped. This QSO is marked as an error so you can check it.",
+        "log_imported_progress": "Adding to HRD: {done} / {total}…",
+        "progress_down": "Adding to HRD: {done} / {total}",
+        "progress_up": "Sending to Wavelog: {done} / {total}",
     },
 }
 

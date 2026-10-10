@@ -163,9 +163,13 @@ class FakeHRDReceiver:
     """Imite la réception UDP de HRD (ADIF). Avec `echo_port`, renvoie chaque QSO reçu à l'app
     comme le fait HRD avec son envoi UDP (QSO Forwarding)."""
 
-    def __init__(self, echo_port=None):
+    def __init__(self, echo_port=None, db_path=None, crash_after=None):
+        """db_path : enregistre chaque QSO reçu dans ce faux log (comme le fait HRD).
+        crash_after : « plante » (cesse d'écouter) à la réception de ce numéro de QSO, sans l'enregistrer."""
         self.received = []
         self.echo_port = echo_port
+        self.db_path = db_path
+        self.crash_after = crash_after
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(("127.0.0.1", 0))
         self.sock.settimeout(0.5)
@@ -181,6 +185,11 @@ class FakeHRDReceiver:
                 continue
             text = data.decode("cp1252")
             self.received.append(text)
+            if self.crash_after and len(self.received) >= self.crash_after:
+                self.close()
+                return
+            if self.db_path:
+                self._log(text)
             if self.echo_port:
                 call = re.search(r"<call:\d+>(\S+)", text).group(1)
                 date = re.search(r"<qso_date:\d+>(\d{8})", text).group(1)
@@ -189,6 +198,23 @@ class FakeHRDReceiver:
                 ts = "%s-%s-%s %s:%s:%s" % (date[:4], date[4:6], date[6:], tm[:2], tm[2:4], tm[4:])
                 send_contact(self.echo_port, call, "echo-%d" % len(self.received), ts=ts,
                              band=str(int(float(freq))), freq=str(int(float(freq) * 1e6)))
+
+    def _log(self, text):
+        """Enregistre le QSO reçu dans le faux log HRD (un peu plus tard, comme HRD)."""
+        def field(name, default=""):
+            m = re.search(r"<%s:\d+>(\S+)" % name, text)
+            return m.group(1) if m else default
+        date, tm = field("qso_date"), field("time_on")
+        con = sqlite3.connect(self.db_path)
+        try:
+            key = (con.execute("SELECT MAX(COL_PRIMARY_KEY) FROM TABLE_HRD_CONTACTS_V07").fetchone()[0] or 0) + 1
+            con.execute("INSERT INTO TABLE_HRD_CONTACTS_V07 (COL_PRIMARY_KEY, COL_CALL, COL_BAND, COL_QSO_DATE, "
+                        "COL_TIME_ON, COL_MODE) VALUES (?,?,?,?,?,?)",
+                        (key, field("call"), field("band"), "%s-%s-%s" % (date[:4], date[4:6], date[6:]),
+                         "%s:%s:%s.000" % (tm[:2], tm[2:4], tm[4:6] or "00"), field("mode")))
+            con.commit()
+        finally:
+            con.close()
 
     def calls(self):
         return [re.search(r"<call:\d+>(\S+)", r).group(1) for r in self.received]

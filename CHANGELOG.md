@@ -7,6 +7,9 @@
 - **Nouveau bouton « Comparer les deux logs… »** : affiche, date par date, les QSO manquants de chaque côté et les ajoute en un clic. Il remplace « Envoyer tout le log HRD… ». Rien n'est jamais supprimé.
 - Nouvelle colonne « Sens » dans la liste (HRD → Wavelog / Wavelog → HRD).
 - Si HRD est fermé, les QSO venus de Wavelog attendent et sont ajoutés dès son ouverture.
+- **Ajout dans HRD un QSO à la fois, avec confirmation :** l'app attend que HRD ait vraiment enregistré chaque QSO avant d'envoyer le suivant (HRD peut se fermer brutalement si on lui en envoie trop vite). Un QSO déjà présent n'est pas renvoyé, et si HRD se ferme, l'envoi s'arrête et le QSO concerné est signalé.
+- **Barre de progression** pendant l'envoi de plusieurs QSO, dans les deux sens.
+- Correctif : deux QSO identiques (doublon dans un log) ne se mélangent plus dans la liste.
 
 ## 1.1.0 — 2026-10-09
 

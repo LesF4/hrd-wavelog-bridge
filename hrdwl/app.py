@@ -160,6 +160,12 @@ class App:
         ttk.Button(bar, text=t("btn_open_folder"),
                    command=lambda: os.startfile(core.data_dir())).pack(side="left")
         ttk.Button(bar, text=t("btn_quit"), command=self.quit).pack(side="right")
+        # barre de progression (visible seulement pendant un envoi de plusieurs QSO)
+        self.progress_box = ttk.Frame(bar)
+        self.progress_lbl = ttk.Label(self.progress_box, font=("Segoe UI", 9, "bold"))
+        self.progress_lbl.pack(side="left", padx=(0, 6))
+        self.progress_bar = ttk.Progressbar(self.progress_box, length=220, mode="determinate")
+        self.progress_bar.pack(side="left")
 
         self.logbox = tk.Text(self.root, height=6, state="disabled", font=("Consolas", 9),
                               bg="#f6f6f6", relief="flat", padx=6, pady=4)
@@ -249,6 +255,8 @@ class App:
                     self.set_indicators()
                 elif kind == "sent":
                     self.notify(t("notify_sent", call=ev[1]))
+                elif kind == "progress":
+                    self.show_progress(ev[1], ev[2], ev[3])
                 elif kind == "compare":
                     self.show_comparison(ev[1], ev[2])
                 elif kind == "compare_error":
@@ -269,6 +277,16 @@ class App:
             messagebox.showinfo(core.APP_TITLE, t("resend_none"))
             return
         self.syncer.resend(sel)
+
+    def show_progress(self, direction, done, total):
+        """Barre de progression : (sens, fait, total) ; total None = terminé."""
+        if total is None or total < 2:
+            self.progress_box.pack_forget()
+            return
+        self.progress_lbl.config(text=t("progress_" + direction, done=done, total=total))
+        self.progress_bar.config(maximum=total, value=done)
+        if not self.progress_box.winfo_ismapped():
+            self.progress_box.pack(side="right", padx=(0, 12))
 
     # ----------------------------------------------------------------- comparaison des deux logs
     def compare_logs(self):

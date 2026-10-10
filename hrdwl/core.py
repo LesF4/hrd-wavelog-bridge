@@ -243,6 +243,12 @@ class HRDReader:
     def all_rows(self):
         return self._query("SELECT %s FROM %s ORDER BY COL_PRIMARY_KEY" % (", ".join(self._columns()), TABLE))
 
+    def has_qso(self, fields):
+        """Vrai si ce QSO (même indicatif, même bande, à 15 min près) est dans le log HRD."""
+        rows = self._query("SELECT COL_CALL, COL_BAND, COL_QSO_DATE, COL_TIME_ON FROM %s WHERE COL_CALL = ? "
+                           "COLLATE NOCASE" % TABLE, (fields.get("CALL", ""),))
+        return QsoIndex(row_to_fields(r) for r in rows).find(fields)
+
 
 def _fmt_number(v):
     if isinstance(v, float):
@@ -544,9 +550,12 @@ class History:
 
     def add(self, key, fields, status, message="", direction="up"):
         """direction : "up" = HRD -> Wavelog, "down" = Wavelog -> HRD."""
-        item = {"hrd_key": key, "fields": fields, "status": status, "message": message, "dir": direction,
-                "time": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         with self.lock:
+            base, n = key, 2
+            while any(i["hrd_key"] == key for i in self.items):  # deux QSO identiques (doublon d'un log)
+                key, n = "%s#%d" % (base, n), n + 1
+            item = {"hrd_key": key, "fields": fields, "status": status, "message": message, "dir": direction,
+                    "time": datetime.now(timezone.utc).isoformat(timespec="seconds")}
             self.items.append(item)
         return item
 
@@ -784,8 +793,11 @@ class Syncer(threading.Thread):
                 elif len(pending) <= 5:
                     self.post("log", t("log_dupe", call=call))
             done += 1
+            self.post("progress", "up", done, len(pending))
             if done % 20 == 0:
                 self.save_history()
+        if pending:
+            self.post("progress", "up", None, None)
         if done:
             self.save_history()
 
@@ -859,19 +871,67 @@ class Syncer(threading.Thread):
                 self.post("log", t("log_hrd_closed", n=len(pending), port=port))
             return
         self._hrd_closed_logged = False
+        path = self.cfg["hrd_db"] or default_hrd_db()
+        reader = HRDReader(path) if path and os.path.exists(path) else None
+        done = 0
         for item in pending:
+            if not self.cmds.empty() and self.cmds.queue[0][0] == "stop":
+                break
+            if not hrd_listening(port):
+                self.post("log", t("log_hrd_closed", n=len(pending) - done, port=port))
+                break
+            fields, call = item["fields"], item["fields"].get("CALL", "?")
             try:
-                send_to_hrd(item["fields"], port)
+                if reader and reader.has_qso(fields):  # déjà là (envoi précédent, import manuel…)
+                    item["status"], item["message"] = "imported", t("msg_already_in_hrd")
+                    done += 1
+                    self.post("progress", "down", done, len(pending))
+                    continue
+            except (sqlite3.Error, OSError):
+                pass
+            try:
+                send_to_hrd(fields, port)
             except OSError as e:
                 item["status"], item["message"] = "error", str(e)[:300]
                 continue
-            item["status"], item["message"] = "imported", ""
+            # Un QSO à la fois : on attend que HRD l'ait vraiment enregistré avant d'envoyer le suivant
+            # (HRD fait une recherche pour chaque QSO reçu et sature si on va trop vite).
+            confirmed = self.wait_in_hrd(reader, fields, port)
+            if confirmed is None:  # HRD s'est fermé juste après ce QSO : on le signale, sans le renvoyer
+                item["status"], item["message"] = "error", t("msg_hrd_closed_after")
+                self.post("log", t("log_hrd_closed_after", call=call))
+                break
+            item["status"] = "imported" if confirmed else "error"
+            item["message"] = "" if confirmed else t("msg_hrd_no_confirm")
+            done += 1
+            self.post("progress", "down", done, len(pending))
             if len(pending) <= 5:
-                self.post("log", t("log_imported", call=item["fields"].get("CALL", "?")))
-            time.sleep(0.3)  # laisser HRD enregistrer chaque QSO (il fait une recherche à chaque réception)
-        if len(pending) > 5:
-            self.post("log", t("log_imported_many", n=len(pending)))
+                self.post("log", t("log_imported", call=call))
+            elif done % 20 == 0:
+                self.post("log", t("log_imported_progress", done=done, total=len(pending)))
+                self.save_history()
+        if len(pending) > 5 and done:
+            self.post("log", t("log_imported_many", n=done))
+        self.post("progress", "down", None, None)  # fin (ou interruption) : la barre disparaît
         self.save_history()
+
+    def wait_in_hrd(self, reader, fields, port, timeout=20):
+        """Attend que HRD ait enregistré le QSO. True = vu dans le log, False = pas vu à temps,
+        None = HRD s'est fermé. Sans fichier de log connu, on se contente d'une pause."""
+        if reader is None:
+            time.sleep(1.5)
+            return True if hrd_listening(port) else None
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(0.5)
+            try:
+                if reader.has_qso(fields):
+                    return True
+            except (sqlite3.Error, OSError):
+                pass
+            if not hrd_listening(port):
+                return None
+        return False
 
     # ----------------------------------------------------------------- comparaison des deux logs
     def do_compare(self):

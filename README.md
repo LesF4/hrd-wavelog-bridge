@@ -86,6 +86,8 @@ Chaque ligne de la liste indique son **sens** : *HRD → Wavelog* ou *Wavelog �
 
 Le bouton **Comparer les deux logs…** lit ton log HRD (en lecture seule) et ton Wavelog, puis affiche, date par date, les QSO qui manquent **dans HRD** et ceux qui manquent **dans Wavelog**. Tu peux alors cliquer sur **Ajouter les … QSO dans HRD** et/ou **Ajouter les … QSO dans Wavelog**. Rien n'est jamais supprimé. Pratique au départ, après un concours saisi ailleurs, ou si l'app a été fermée un moment.
 
+Les QSO sont ajoutés dans HRD **un par un** : l'app attend que HRD ait enregistré chacun avant de passer au suivant, et une **barre de progression** en bas de la fenêtre montre l'avancement (compte quelques minutes pour 200 QSO). Si un QSO est refusé par Wavelog, la colonne *Détail* en donne la raison : le plus souvent, une bande manquante ou un doublon dans HRD, à corriger dans HRD avant de relancer la comparaison.
+
 - La croix ✕ range l'application près de l'horloge sans l'arrêter. Clic droit sur l'icône → **Quitter**.
 - **Dossier de sauvegarde** : le fichier `qsos_envoyes_wavelog.adi` garde une copie ADIF de tout ce qui a été envoyé à Wavelog.
 
