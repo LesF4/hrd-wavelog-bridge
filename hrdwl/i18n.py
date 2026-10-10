@@ -119,6 +119,7 @@ TEXTS = {
         "log_imported_progress": "Ajout dans HRD : {done} / {total}…",
         "progress_down": "Ajout dans HRD : {done} / {total}",
         "progress_up": "Envoi à Wavelog : {done} / {total}",
+        "log_catch_up": "Rattrapage : {n} QSO enregistrés dans HRD pendant que l'app était fermée, envoyés vers Wavelog.",
     },
     "en": {
         "status_sent": "✔ Sent to Wavelog",
@@ -234,6 +235,7 @@ TEXTS = {
         "log_imported_progress": "Adding to HRD: {done} / {total}…",
         "progress_down": "Adding to HRD: {done} / {total}",
         "progress_up": "Sending to Wavelog: {done} / {total}",
+        "log_catch_up": "Catch-up: {n} QSO(s) logged in HRD while the app was closed, being sent to Wavelog.",
     },
 }
 

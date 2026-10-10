@@ -32,7 +32,7 @@ from .i18n import t
 
 APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
@@ -242,6 +242,11 @@ class HRDReader:
 
     def all_rows(self):
         return self._query("SELECT %s FROM %s ORDER BY COL_PRIMARY_KEY" % (", ".join(self._columns()), TABLE))
+
+    def rows_since(self, date_iso):
+        """QSO du log dont la date est >= date_iso ('AAAA-MM-JJ'), champs du QSO uniquement."""
+        return self._query("SELECT %s FROM %s WHERE COL_QSO_DATE >= ? ORDER BY COL_PRIMARY_KEY"
+                           % (", ".join(self._columns()), TABLE), (date_iso,))
 
     def has_qso(self, fields):
         """Vrai si ce QSO (même indicatif, même bande, à 15 min près) est dans le log HRD."""
@@ -669,6 +674,10 @@ class Syncer(threading.Thread):
 
     def run(self):
         self.start_listener()
+        try:
+            self.catch_up_from_hrd()
+        except Exception as e:  # le rattrapage ne doit jamais empêcher l'app de tourner
+            self.post("log", t("log_internal", err=repr(e)))
         while True:
             for step in (self.upload_cycle, self.download_cycle):
                 try:
@@ -743,6 +752,38 @@ class Syncer(threading.Thread):
             self.post("log", t("log_replace", call=call))
         elif kind == "contactdelete":
             self.post("log", t("log_delete", call=call))
+
+    def catch_up_from_hrd(self):
+        """Au démarrage : retrouve dans le log HRD les QSO enregistrés pendant que l'app était fermée
+        (plus récents que le dernier QSO reçu de HRD) et les met en file pour Wavelog."""
+        if not is_configured(self.cfg):
+            return
+        ups = [i["fields"] for i in self.history.snapshot() if i.get("dir", "up") == "up"]
+        times = [qso_time(f) for f in ups if qso_time(f)]
+        if not times:
+            return  # premier démarrage : rien à rattraper (voir « Comparer les deux logs »)
+        last = max(times)
+        path = self.cfg["hrd_db"] or default_hrd_db()
+        if not path or not os.path.exists(path):
+            return
+        try:
+            rows = HRDReader(path).rows_since(last.strftime("%Y-%m-%d"))
+        except (sqlite3.Error, OSError) as e:
+            self.post("log", t("log_hrd_error", err=e))
+            return
+        known = self.history.index()
+        found = 0
+        for row in rows:
+            f = row_to_fields(row)
+            t0 = qso_time(f)
+            if not f.get("CALL") or not t0 or t0 <= last or known.find(f):
+                continue
+            self.history.add("hrd:" + qso_sig(f), f, "pending")
+            known.add(f)
+            found += 1
+        if found:
+            self.post("log", t("log_catch_up", n=found))
+            self.save_history()
 
     def _set_wl(self, state):
         if state != self._wl_state:

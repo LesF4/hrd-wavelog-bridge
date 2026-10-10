@@ -126,6 +126,12 @@ class SyncTests(unittest.TestCase):
         self.receiver = None
         if self._testMethodName == "test_wavelog_qso_copied_to_hrd_without_boomerang":
             self.wl.add_external("OLDWL", time_on="080000")  # déjà dans Wavelog avant le démarrage
+        if self._testMethodName == "test_catch_up_qsos_logged_while_app_was_closed":
+            # dernier QSO reçu de HRD avant la fermeture de l'app : OLD3 (12:13:30), déjà envoyé
+            old3 = {"CALL": "OLD3", "QSO_DATE": "20261009", "TIME_ON": "121330", "BAND": "20m"}
+            self.history.add("id-old3", old3, "sent")
+            fakes.add_qso(self.con, 4, "MISSED1", minute=40)  # enregistrés pendant que l'app était fermée
+            fakes.add_qso(self.con, 5, "MISSED2", minute=45)
         self.sync.start()
         self.assertTrue(wait_for(lambda: ("hrd", True, self.port) in list(self.events.queue)))
 
@@ -148,6 +154,16 @@ class SyncTests(unittest.TestCase):
     def qso(call, minute):
         return {"CALL": call, "QSO_DATE": "20260221", "TIME_ON": "08%02d00" % minute, "BAND": "40m",
                 "FREQ": "7.080000", "MODE": "SSB"}
+
+    def test_catch_up_qsos_logged_while_app_was_closed(self):
+        self.assertTrue(wait_for(lambda: self.sent_calls() == ["MISSED1", "MISSED2"]))
+        self.assertIn(("log", core.t("log_catch_up", n=2)), list(self.events.queue))
+        time.sleep(1)
+        self.assertEqual(self.sent_calls(), ["MISSED1", "MISSED2"])  # OLD1 / OLD2 plus anciens : pas renvoyés
+
+    def test_no_catch_up_on_first_start(self):
+        time.sleep(1.5)  # historique vide : on ne renvoie pas tout le log
+        self.assertEqual(self.wl.qsos, [])
 
     def test_bulk_to_hrd_one_by_one_with_progress(self):
         self.cfg["download_enabled"] = False

@@ -1,5 +1,11 @@
 # Journal des versions / Changelog
 
+## 1.2.2 — 2026-10-10
+
+- **La fenêtre ne peut plus se figer à cause de Windows ou d'Internet :** les notifications et l'icône près de l'horloge, ainsi que le test de connexion des Réglages, se font en arrière-plan. (Une fenêtre figée avait été fermée par Windows en plein trafic.)
+- **Rattrapage automatique au démarrage :** les QSO enregistrés dans HRD pendant que l'app était fermée sont retrouvés et envoyés à Wavelog, sans rien faire.
+- **Diagnostic :** si la fenêtre ne répond plus pendant plus de 8 secondes, l'app note l'état de chacune de ses tâches dans `%APPDATA%\HRDtoWavelog\diagnostic.log`, pour trouver la cause.
+
 ## 1.2.1 — 2026-10-10
 
 - Correctif : la 1.2.0 pouvait se fermer au démarrage si l'historique contenait deux fois le même QSO (doublon dans un log). L'historique est maintenant réparé automatiquement au démarrage, et la liste ne peut plus planter sur une ligne en double.

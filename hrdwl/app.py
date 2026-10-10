@@ -3,7 +3,10 @@
 import os
 import queue
 import sys
+import threading
+import time
 import tkinter as tk
+import traceback
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
@@ -98,6 +101,13 @@ class App:
         self.wl_state = None
         self.tray_hint_shown = False
         self.refresh_scheduled = False
+        # Les appels à l'icône de notification (Windows) passent par un thread à part :
+        # la fenêtre ne doit jamais attendre Windows.
+        self.tray_jobs = queue.Queue()
+        threading.Thread(target=self._tray_worker, daemon=True).start()
+        # Mouchard : si la fenêtre ne répond plus, on note où en est chaque thread.
+        self._ui_beat = time.time()
+        threading.Thread(target=self._watchdog, daemon=True).start()
 
         root.title("%s  v%s" % (core.APP_TITLE, core.APP_VERSION))
         root.geometry("920x540")
@@ -119,6 +129,7 @@ class App:
         self.syncer = core.Syncer(self.cfg, self.history, lambda *ev: self.events.put(ev))
         self.syncer.start()
         root.after(200, self.poll_events)
+        root.after(1000, self._heartbeat)
         if start_minimized or self.cfg["start_minimized"]:
             root.after(100, self.hide)
         elif not core.is_configured(self.cfg):
@@ -231,8 +242,9 @@ class App:
         elif self.wl_state == "unset":
             self.wl_lbl.config(text=t("wl_unset"), fg=ORANGE)
         if self.tray:
-            self.tray.title = "HRD → Wavelog — HRD %s — Wavelog %s" % (
-                "✔" if ok else "✖", "✔" if self.wl_state == "ok" else "✖")
+            title = "HRD → Wavelog — HRD %s — Wavelog %s" % ("✔" if ok else "✖", "✔" if self.wl_state == "ok" else "✖")
+            tray = self.tray
+            self.tray_jobs.put(lambda: setattr(tray, "title", title))
 
     def about(self):
         messagebox.showinfo(core.APP_TITLE, t("about_text", version=core.APP_VERSION, url=core.APP_URL))
@@ -264,6 +276,8 @@ class App:
                 elif kind == "compare_error":
                     self.root.config(cursor="")
                     messagebox.showerror(t("compare_title"), ev[1])
+                elif kind == "call":  # résultat d'un travail de fond à afficher dans la fenêtre
+                    ev[1]()
                 elif kind == "show":
                     self.show()
                 elif kind == "quit":
@@ -435,13 +449,25 @@ class App:
         r += 1
 
         def load_stations(quiet=False):
+            # La connexion à Wavelog se fait en arrière-plan : la fenêtre reste réactive même si le
+            # serveur met du temps à répondre.
             info_var.set("…")
-            win.update_idletasks()
-            try:
-                rights = core.check_key(url_var.get(), key_var.get())
-                found = core.station_profiles(url_var.get(), key_var.get())
-            except core.WavelogError as e:
-                info_var.set("✖ %s" % e)
+            url, key = url_var.get(), key_var.get()
+
+            def work():
+                try:
+                    result = (core.check_key(url, key), core.station_profiles(url, key), None)
+                except Exception as e:  # ne jamais laisser le travail de fond sans réponse
+                    result = (None, None, e)
+                self.events.put(("call", lambda: show_stations(*result)))
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def show_stations(rights, found, error):
+            if not win.winfo_exists():
+                return
+            if error is not None:
+                info_var.set("✖ %s" % error)
                 return
             stations[:] = [(sid, label) for sid, label, _active in found]
             station_combo["values"] = [label for _sid, label in stations]
@@ -558,12 +584,50 @@ class App:
             self.tray = None
             self.start_tray()
 
-    def notify(self, text):
-        if self.tray and not self.root.winfo_viewable():
+    def _tray_worker(self):
+        while True:
+            job = self.tray_jobs.get()
+            if job is None:
+                return
             try:
-                self.tray.notify(text, "HRD → Wavelog")
+                job()
             except Exception:
                 pass
+
+    def notify(self, text):
+        if self.tray and not self.root.winfo_viewable():
+            tray = self.tray
+            self.tray_jobs.put(lambda: tray.notify(text, "HRD → Wavelog"))
+
+    def _heartbeat(self):
+        self._ui_beat = time.time()
+        self.root.after(1000, self._heartbeat)
+
+    def _watchdog(self):
+        """Si la fenêtre ne répond plus depuis 8 s, écrit l'état de chaque thread dans
+        %APPDATA%\\HRDtoWavelog\\diagnostic.log (une fois par blocage)."""
+        reported = False
+        while True:
+            time.sleep(2)
+            lag = time.time() - self._ui_beat
+            if lag < 3:
+                reported = False
+            elif lag > 8 and not reported:
+                reported = True
+                try:
+                    names = {th.ident: th.name for th in threading.enumerate()}
+                    lines = ["=== %s : fenêtre bloquée depuis %.0f s (v%s)" % (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), lag, core.APP_VERSION)]
+                    for ident, frame in sys._current_frames().items():
+                        lines.append("--- thread %s" % names.get(ident, ident))
+                        lines.extend(line.rstrip() for line in traceback.format_stack(frame))
+                    path = os.path.join(core.data_dir(), "diagnostic.log")
+                    if os.path.exists(path) and os.path.getsize(path) > 500000:
+                        os.replace(path, path + ".old")
+                    with open(path, "a", encoding="utf-8") as f:
+                        f.write("\n".join(lines) + "\n")
+                except Exception:
+                    pass
 
     def hide(self):
         if self.tray:
@@ -581,7 +645,8 @@ class App:
             self.hide()
             if not self.tray_hint_shown:
                 self.tray_hint_shown = True
-                self.tray.notify(t("tray_hint"), "HRD → Wavelog")
+                tray, hint = self.tray, t("tray_hint")
+                self.tray_jobs.put(lambda: tray.notify(hint, "HRD → Wavelog"))
         else:
             self.quit()
 
