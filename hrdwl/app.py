@@ -137,15 +137,16 @@ class App:
         ttk.Button(top, text=t("btn_about"), command=self.about).pack(side="right")
         ttk.Button(top, text=t("btn_settings"), command=self.open_settings).pack(side="right", padx=6)
 
-        cols = [("utc", 120), ("call", 95), ("band", 55), ("mode", 70), ("freq", 85),
-                ("status", 150), ("msg", 200)]
+        cols = [("utc", 120), ("dir", 110), ("call", 95), ("band", 55), ("mode", 70), ("freq", 85),
+                ("status", 160), ("msg", 160)]
         frame = ttk.Frame(self.root, padding=(10, 0))
         frame.pack(fill="both", expand=True)
         self.tree = ttk.Treeview(frame, columns=[c[0] for c in cols], show="headings", selectmode="extended")
         for cid, width in cols:
             self.tree.heading(cid, text=t("col_" + cid))
             self.tree.column(cid, width=width, anchor="w", stretch=cid == "msg")
-        for tag, color in (("sent", GREEN), ("dupe", GREEN), ("pending", ORANGE), ("error", RED)):
+        for tag, color in (("sent", GREEN), ("dupe", GREEN), ("imported", GREEN), ("pending", ORANGE),
+                           ("error", RED)):
             self.tree.tag_configure(tag, foreground=color)
         sb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
@@ -155,7 +156,7 @@ class App:
         bar = ttk.Frame(self.root, padding=(10, 6))
         bar.pack(fill="x")
         ttk.Button(bar, text=t("btn_resend"), command=self.resend_selected).pack(side="left")
-        ttk.Button(bar, text=t("btn_history"), command=self.send_whole_log).pack(side="left", padx=6)
+        ttk.Button(bar, text=t("btn_compare"), command=self.compare_logs).pack(side="left", padx=6)
         ttk.Button(bar, text=t("btn_open_folder"),
                    command=lambda: os.startfile(core.data_dir())).pack(side="left")
         ttk.Button(bar, text=t("btn_quit"), command=self.quit).pack(side="right")
@@ -195,9 +196,12 @@ class App:
             when, call = core.qso_label(f)
             mode = f.get("SUBMODE") and "%s/%s" % (f.get("MODE", ""), f["SUBMODE"]) or f.get("MODE", "")
             iid = str(item["hrd_key"])
-            self.tree.insert("", 0, iid=iid, tags=(item["status"],), values=(
-                when, call, f.get("BAND", ""), mode, f.get("FREQ", ""),
-                t("status_" + item["status"]), item.get("message", "")))
+            down = item.get("dir") == "down"
+            status = item["status"]
+            label = t("status_%s_down" % status) if down and status in ("pending", "error") else t("status_" + status)
+            self.tree.insert("", 0, iid=iid, tags=(status,), values=(
+                when, t("dir_down" if down else "dir_up"), call, f.get("BAND", ""), mode, f.get("FREQ", ""),
+                label, item.get("message", "")))
             if iid in sel:
                 self.tree.selection_add(iid)
 
@@ -245,6 +249,11 @@ class App:
                     self.set_indicators()
                 elif kind == "sent":
                     self.notify(t("notify_sent", call=ev[1]))
+                elif kind == "compare":
+                    self.show_comparison(ev[1], ev[2])
+                elif kind == "compare_error":
+                    self.root.config(cursor="")
+                    messagebox.showerror(t("compare_title"), ev[1])
                 elif kind == "show":
                     self.show()
                 elif kind == "quit":
@@ -261,15 +270,77 @@ class App:
             return
         self.syncer.resend(sel)
 
-    def hrd_log_count(self):
-        try:
-            return core.HRDReader(self.cfg["hrd_db"] or core.default_hrd_db()).count()
-        except Exception:
-            return "?"
+    # ----------------------------------------------------------------- comparaison des deux logs
+    def compare_logs(self):
+        self.log(t("compare_running"))
+        self.root.config(cursor="watch")
+        self.syncer.compare()
 
-    def send_whole_log(self):
-        if messagebox.askyesno(core.APP_TITLE, t("history_confirm", n=self.hrd_log_count())):
-            self.syncer.send_whole_log()
+    @staticmethod
+    def summarize(qsos):
+        """Regroupe des QSO par date : [(date, nombre, détail)]."""
+        by_day = {}
+        for f in qsos:
+            by_day.setdefault(f.get("QSO_DATE", ""), []).append(f)
+        rows = []
+        for day in sorted(by_day, reverse=True):
+            fs = by_day[day]
+            bands = sorted({(f.get("BAND") or "?") for f in fs})
+            modes = sorted({(f.get("SUBMODE") or f.get("MODE") or "?") for f in fs})
+            contests = sorted({f["CONTEST_ID"] for f in fs if f.get("CONTEST_ID")})
+            detail = ", ".join(bands) + " — " + ", ".join(modes) + (" — " + ", ".join(contests) if contests else "")
+            date = "%s-%s-%s" % (day[:4], day[4:6], day[6:8]) if len(day) == 8 else day
+            rows.append((date, len(fs), detail))
+        return rows
+
+    def show_comparison(self, wl_only, hrd_only):
+        self.root.config(cursor="")
+        if not wl_only and not hrd_only:
+            messagebox.showinfo(t("compare_title"), t("compare_identical"))
+            return
+        win = tk.Toplevel(self.root)
+        win.title(t("compare_title"))
+        win.transient(self.root)
+        win.geometry("760x460")
+        frm = ttk.Frame(win, padding=12)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=t("compare_summary", a=len(wl_only), b=len(hrd_only)),
+                  font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        ttk.Label(frm, text=t("cmp_note"), foreground="#666", wraplength=720).pack(anchor="w", pady=(4, 8))
+
+        cols = [("side", 110), ("date", 100), ("n", 60), ("detail", 440)]
+        box = ttk.Frame(frm)
+        box.pack(fill="both", expand=True)
+        tree = ttk.Treeview(box, columns=[c[0] for c in cols], show="headings")
+        for cid, width in cols:
+            tree.heading(cid, text=t("cmp_col_" + cid))
+            tree.column(cid, width=width, anchor="w", stretch=cid == "detail")
+        for date, n, detail in self.summarize(wl_only):
+            tree.insert("", "end", values=("HRD", date, n, detail))
+        for date, n, detail in self.summarize(hrd_only):
+            tree.insert("", "end", values=("Wavelog", date, n, detail))
+        sb = ttk.Scrollbar(box, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x", pady=(10, 0))
+
+        def add(button, to_hrd, to_wl):
+            button.state(["disabled"])
+            self.syncer.add_missing(to_hrd, to_wl)
+            messagebox.showinfo(t("compare_title"), t("cmp_done"), parent=win)
+
+        if wl_only:
+            b1 = ttk.Button(btns, text=t("cmp_btn_to_hrd", n=len(wl_only)))
+            b1.configure(command=lambda: add(b1, wl_only, []))
+            b1.pack(side="left")
+        if hrd_only:
+            b2 = ttk.Button(btns, text=t("cmp_btn_to_wl", n=len(hrd_only)))
+            b2.configure(command=lambda: add(b2, [], hrd_only))
+            b2.pack(side="left", padx=6)
+        ttk.Button(btns, text=t("cmp_btn_close"), command=win.destroy).pack(side="right")
 
     # ----------------------------------------------------------------- réglages
     def open_settings(self):
@@ -299,6 +370,9 @@ class App:
         autostart_var = tk.BooleanVar(value=get_autostart())
         minimized_var = tk.BooleanVar(value=self.cfg["start_minimized"])
         tray_var = tk.BooleanVar(value=self.cfg["close_to_tray"])
+        download_var = tk.BooleanVar(value=self.cfg.get("download_enabled", True))
+        hrd_in_var = tk.StringVar(value=str(self.cfg.get("hrd_in_port", 2333)))
+        station_checks = []  # (id, BooleanVar)
 
         r = 0
         ttk.Label(frm, text=t("s_hrd"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w")
@@ -357,10 +431,35 @@ class App:
                 choice = next((lbl for sid, lbl, active in found if active), stations[0][1] if stations else "")
             station_var.set(choice)
             info_var.set(("✔ " + t("s_loaded", rights=rights)) if "w" in rights else ("✖ " + t("s_readonly")))
+            # stations suivies pour Wavelog -> HRD
+            for w in stations_frame.winfo_children():
+                w.destroy()
+            followed = {str(s) for s in (self.cfg.get("download_stations") or [current or ""])}
+            station_checks[:] = []
+            for sid, label in stations:
+                var = tk.BooleanVar(value=sid in followed)
+                ttk.Checkbutton(stations_frame, text=label, variable=var).pack(anchor="w")
+                station_checks.append((sid, var))
 
         ttk.Button(frm, text=t("s_load"), command=load_stations).grid(row=r, column=1, sticky="w", pady=(6, 0))
         r += 1
         ttk.Label(frm, textvariable=info_var, wraplength=480).grid(row=r, column=1, columnspan=2, sticky="w")
+        r += 1
+
+        ttk.Label(frm, text=t("s_sync"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w", pady=(14, 0))
+        r += 1
+        ttk.Checkbutton(frm, text=t("s_download"), variable=download_var).grid(row=r, column=0, columnspan=3,
+                                                                              sticky="w")
+        r += 1
+        ttk.Label(frm, text=t("s_hrd_in_port")).grid(row=r, column=0, sticky="w")
+        ttk.Entry(frm, textvariable=hrd_in_var, width=8).grid(row=r, column=1, sticky="w")
+        r += 1
+        ttk.Label(frm, text=t("s_hrd_in_hint"), foreground="#666").grid(row=r, column=1, columnspan=2, sticky="w")
+        r += 1
+        ttk.Label(frm, text=t("s_dl_stations")).grid(row=r, column=0, sticky="nw", pady=(6, 0))
+        stations_frame = ttk.Frame(frm)
+        stations_frame.grid(row=r, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(stations_frame, text=t("s_dl_stations_hint"), foreground="#666").pack(anchor="w")
         r += 1
 
         ttk.Label(frm, text=t("s_options"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w", pady=(14, 0))
@@ -386,13 +485,17 @@ class App:
                 messagebox.showerror(t("settings_title"), t("err_missing"), parent=win)
                 return
             try:
-                udp_port = int(port_var.get())
+                udp_port, hrd_in_port = int(port_var.get()), int(hrd_in_var.get())
             except ValueError:
                 messagebox.showerror(t("settings_title"), t("err_port"), parent=win)
                 return
+            followed = ([s for s, var in station_checks if var.get()] if station_checks
+                        else self.cfg.get("download_stations", []))
             old_lang = self.cfg["language"]
             self.cfg.update(
-                udp_port=udp_port, hrd_db=db_var.get().strip(), wavelog_url=url_var.get().strip(),
+                udp_port=udp_port, hrd_in_port=hrd_in_port, download_enabled=download_var.get(),
+                download_stations=followed,
+                hrd_db=db_var.get().strip(), wavelog_url=url_var.get().strip(),
                 api_key=key_var.get().strip(), station_id=sid,
                 language=next(k for k, lbl in langs.items() if lbl == lang_var.get()),
                 start_minimized=minimized_var.get(), close_to_tray=tray_var.get())
@@ -409,9 +512,8 @@ class App:
                 self.restart_tray()
             self.log(t("log_settings_saved"))
             self.syncer.reconfigure()
-            if not was_configured:
-                if messagebox.askyesno(core.APP_TITLE, t("first_setup_history", n=self.hrd_log_count())):
-                    self.syncer.send_whole_log()
+            if not was_configured and messagebox.askyesno(core.APP_TITLE, t("first_setup_compare")):
+                self.compare_logs()
             self.syncer.wake()
 
         btns = ttk.Frame(frm)

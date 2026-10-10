@@ -21,8 +21,9 @@ if not os.path.exists(db):
     fakes.make_hrd_db(db, n=3).close()
 wl = fakes.FakeWavelog()
 with open(os.path.join(folder, "HRDtoWavelog", "config.json"), "w") as f:
-    json.dump({"udp_port": port, "hrd_db": db, "wavelog_url": wl.url, "api_key": fakes.KEY,
-               "station_id": "7"}, f)
+    # réception « HRD » sur un port à part : la démo ne doit jamais rien envoyer au vrai HRD (2333)
+    json.dump({"udp_port": port, "hrd_in_port": port + 1, "hrd_db": db, "wavelog_url": wl.url,
+               "api_key": fakes.KEY, "station_id": "7"}, f)
 print("faux Wavelog :", wl.url, "— faux HRD vers UDP", port, flush=True)
 time.sleep(4)
 calls = [("EA4XY", "Pedro", "7", "7074000"), ("DL1ABC", "Hans", "14", "14074000"),

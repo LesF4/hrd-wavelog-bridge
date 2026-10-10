@@ -73,6 +73,23 @@ class ConversionTests(unittest.TestCase):
                   "https://wl.example.org/index.php/logbook", "https://wl.example.org/index.php"):
             self.assertEqual(core._base(u), "https://wl.example.org/index.php/api/")
 
+    def test_qso_index_matching(self):
+        idx = core.QsoIndex([{"CALL": "K1AB", "BAND": "20m", "QSO_DATE": "20261010", "TIME_ON": "120000",
+                              "MODE": "PSK31"}])
+        same = {"CALL": "k1ab", "BAND": "20M", "QSO_DATE": "20261010", "TIME_ON": "121400", "MODE": "PSK"}
+        self.assertTrue(idx.find(same))  # mode écrit autrement, 14 min d'écart : même QSO
+        self.assertFalse(idx.find(dict(same, TIME_ON="121600")))  # 16 min : autre QSO
+        self.assertFalse(idx.find(dict(same, BAND="40m")))
+        self.assertTrue(idx.find(same, consume=True))
+        self.assertFalse(idx.find(same))  # déjà apparié
+
+    def test_parse_adif_and_fields_for_hrd(self):
+        qsos = core.parse_adif("export <eoh>\n<CALL:4>K1AB <BAND:3>20M <QSO_DATE:8>20261010 "
+                               "<TIME_ON:4>1200 <APP_X:1>y <EMAIL:5>a@b.c <eor>\n<call:2>F4 <eor>")
+        self.assertEqual([q["CALL"] for q in qsos], ["K1AB", "F4"])
+        self.assertEqual(core.fields_for_hrd(qsos[0]),
+                         {"CALL": "K1AB", "QSO_DATE": "20261010", "TIME_ON": "1200", "BAND": "20m"})
+
     def test_same_keys_in_all_languages(self):
         self.assertEqual(set(i18n.TEXTS["fr"]), set(i18n.TEXTS["en"]))
 
@@ -83,12 +100,18 @@ class SyncTests(unittest.TestCase):
         self.db = os.path.join(tempfile.mkdtemp(), "log.hrdsql")
         self.con = fakes.make_hrd_db(self.db, n=3)
         self.port = free_udp_port()
-        self.cfg = dict(core.DEFAULT_CONFIG, udp_port=self.port, hrd_db=self.db, api_key=fakes.KEY,
-                        station_id="7", wavelog_url=self.wl.url + "/index.php/logbook")
+        # port de réception « HRD » libre par défaut : surtout ne jamais viser le vrai HRD (2333)
+        self.cfg = dict(core.DEFAULT_CONFIG, udp_port=self.port, hrd_in_port=free_udp_port(), hrd_db=self.db,
+                        api_key=fakes.KEY, station_id="7", wavelog_url=self.wl.url + "/index.php/logbook")
         self.history = core.History()
         self.history.items = []
         self.events = queue.Queue()
         self.sync = core.Syncer(self.cfg, self.history, lambda *e: self.events.put(e))
+        self.sync.RETRY_SECONDS = 0.3
+        self.sync.DOWNLOAD_SECONDS = 0
+        self.receiver = None
+        if self._testMethodName == "test_wavelog_qso_copied_to_hrd_without_boomerang":
+            self.wl.add_external("OLDWL", time_on="080000")  # déjà dans Wavelog avant le démarrage
         self.sync.start()
         self.assertTrue(wait_for(lambda: ("hrd", True, self.port) in list(self.events.queue)))
 
@@ -96,8 +119,15 @@ class SyncTests(unittest.TestCase):
         self.sync.stop()
         self.sync.join(5)
         self.assertFalse(self.sync.is_alive())
+        if self.receiver:
+            self.receiver.close()
         self.con.close()
         self.wl.close()
+
+    def start_hrd(self, echo=True):
+        """Démarre le faux HRD (réception UDP) et y dirige l'app."""
+        self.receiver = fakes.FakeHRDReceiver(echo_port=self.port if echo else None)
+        self.cfg["hrd_in_port"] = self.receiver.port
 
     def sent_calls(self):
         return sorted(q[0] for q in self.wl.qsos)
@@ -128,13 +158,69 @@ class SyncTests(unittest.TestCase):
         self.sync.wake()
         self.assertTrue(wait_for(lambda: self.status("id-2") == "sent"))
 
-    def test_whole_log_on_demand_without_private_fields(self):
-        fakes.send_contact(self.port, "OLD1", "id-3", ts="2026-10-09 12:11:30", band="20", freq="14074000")
-        self.assertTrue(wait_for(lambda: self.status("id-3") == "sent"))
-        self.sync.send_whole_log()
-        self.assertTrue(wait_for(lambda: self.status("db:3") == "sent"))
-        self.assertEqual(self.status("db:1"), "dupe")  # déjà reçu par UDP -> Wavelog le reconnaît
-        self.assertEqual(self.sent_calls(), ["OLD1", "OLD2", "OLD3"])
+    def items(self, direction):
+        return [i for i in self.history.snapshot() if i.get("dir", "up") == direction]
+
+    def test_wavelog_qso_copied_to_hrd_without_boomerang(self):
+        self.assertTrue(wait_for(lambda: self.cfg["wl_last_id"] == 1))  # point de départ : OLDWL pas recopié
+        self.start_hrd(echo=True)
+        self.wl.add_external("F5CLUB", time_on="093000")  # QSO saisi au radio-club
+        self.assertTrue(wait_for(lambda: self.receiver.calls() == ["F5CLUB"]))
+        self.assertTrue(wait_for(lambda: [i["status"] for i in self.items("down")] == ["imported"]))
+        adif = self.receiver.received[0]
+        self.assertIn("<band:3>40m", adif)
+        self.assertNotIn("app_wavelog", adif.lower())  # seulement les champs du QSO
+        time.sleep(1.5)  # HRD renvoie l'écho : il ne doit ni repartir vers Wavelog, ni revenir dans HRD
+        self.assertEqual(self.items("up"), [])
+        self.assertEqual(self.receiver.calls(), ["F5CLUB"])
+        self.assertEqual(len(self.wl.qsos), 2)
+
+    def test_qso_from_hrd_is_not_sent_back_to_hrd(self):
+        self.assertTrue(wait_for(lambda: self.cfg["wl_last_id"] is not None))
+        self.start_hrd(echo=False)
+        fakes.send_contact(self.port, "EA4XY", "id-5", ts="2026-10-10 10:00:00")
+        self.assertTrue(wait_for(lambda: self.status("id-5") == "sent"))
+        time.sleep(1.5)  # plusieurs récupérations Wavelog -> HRD ont eu lieu
+        self.assertEqual(self.receiver.calls(), [])
+        self.assertEqual(self.items("down"), [])
+
+    def test_hrd_closed_then_opened(self):
+        self.assertTrue(wait_for(lambda: self.cfg["wl_last_id"] is not None))
+        self.wl.add_external("F5PORT", time_on="110000")
+        self.assertTrue(wait_for(lambda: [i["status"] for i in self.items("down")] == ["pending"]))
+        self.start_hrd(echo=False)  # HRD vient d'être ouvert
+        self.assertTrue(wait_for(lambda: self.receiver.calls() == ["F5PORT"]))
+        self.assertTrue(wait_for(lambda: [i["status"] for i in self.items("down")] == ["imported"]))
+
+    def test_wavelog_qso_already_in_hrd_is_not_duplicated(self):
+        self.assertTrue(wait_for(lambda: self.cfg["wl_last_id"] is not None))
+        self.start_hrd(echo=False)
+        # import ADIF manuel dans Wavelog d'un QSO qui est déjà dans le log HRD (OLD2 à 12:12:30)
+        self.wl.add_external("OLD2", date="20261009", time_on="121230", band="20m", freq="14.074")
+        self.wl.add_external("F5NEW", time_on="130000")
+        self.assertTrue(wait_for(lambda: self.receiver.calls() == ["F5NEW"]))
+        time.sleep(1)
+        self.assertEqual(self.receiver.calls(), ["F5NEW"])
+
+    def test_compare_and_fill_both_sides(self):
+        self.cfg["download_enabled"] = False  # on teste la comparaison seule
+        # Wavelog : OLD1 (identique à HRD, mode écrit autrement) + REFSSB (concours jamais entré dans HRD)
+        self.wl.add_external("OLD1", date="20261009", time_on="121130", band="20m", freq="14.074", mode="MFSK")
+        self.wl.add_external("REFSSB", date="20260221", time_on="080000", band="40m", freq="7.080", mode="SSB")
+        self.sync.compare()
+        self.assertTrue(wait_for(lambda: any(e[0] == "compare" for e in list(self.events.queue))))
+        _kind, wl_only, hrd_only = next(e for e in list(self.events.queue) if e[0] == "compare")
+        self.assertEqual([f["CALL"] for f in wl_only], ["REFSSB"])
+        self.assertEqual(sorted(f["CALL"] for f in hrd_only), ["OLD2", "OLD3"])
+        for f in hrd_only:  # rien de personnel ne sort du log HRD
+            self.assertFalse({"EMAIL", "ADDRESS", "NOTES", "LAT"} & set(f))
+        self.start_hrd(echo=True)
+        self.sync.add_missing(wl_only, hrd_only)
+        self.assertTrue(wait_for(lambda: self.receiver.calls() == ["REFSSB"]))
+        self.assertTrue(wait_for(lambda: self.sent_calls() == ["OLD1", "OLD2", "OLD3", "REFSSB"]))
+        time.sleep(1.5)  # ni boomerang, ni doublon
+        self.assertEqual(self.receiver.calls(), ["REFSSB"])
+        self.assertEqual(len(self.wl.qsos), 4)
         for _call, _when, adif, _sid in self.wl.qsos:
             for private in ("prive@", "rue Privée", "note perso", "RESULT=OK"):
                 self.assertNotIn(private, adif)

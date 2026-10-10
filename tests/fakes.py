@@ -122,19 +122,77 @@ class FakeWavelog:
                 obj = json.loads(self.rfile.read(int(self.headers["Content-Length"])).decode())
                 if obj.get("key") != KEY:
                     return self.reply(401, {"status": "failed", "reason": "missing or wrong api key"})
+                if self.path.endswith("/get_contacts_adif"):  # export des QSO d'identifiant > fetchfromid
+                    since = int(obj["fetchfromid"])
+                    with outer.lock:
+                        recs = [(i, q[2]) for i, q in enumerate(outer.qsos, start=1) if i > since]
+                    last = recs[-1][0] if recs else since
+                    adif = ("Wavelog export <eoh>\n" + "\n".join(r for _i, r in recs)) if recs else None
+                    return self.reply(200, {"status": "successful", "lastfetchedid": last,
+                                            "exported_qsos": len(recs), "adif": adif})
                 s = obj["string"]
                 call = re.search(r"<call:\d+>(\S+)", s).group(1)
                 when = re.search(r"<time_on:\d+>(\d+)", s).group(1)
                 if any(q[0] == call and q[1] == when for q in outer.qsos):
                     return self.reply(400, {"status": "abort", "adif_errors": 1,
                                             "messages": ["", "Duplicate for %s" % call]})
-                outer.qsos.append((call, when, s, obj["station_profile_id"]))
+                with outer.lock:
+                    outer.qsos.append((call, when, s, obj["station_profile_id"]))
                 self.reply(201, {"status": "created", "adif_count": 1, "adif_errors": 0})
 
+        self.lock = threading.Lock()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.url = "http://127.0.0.1:%d" % self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
+    def add_external(self, call, date="20261010", time_on="093000", band="40m", freq="7.074000", mode="FT8"):
+        """QSO saisi directement dans Wavelog (radio-club, portable…)."""
+        f = {"CALL": call, "QSO_DATE": date, "TIME_ON": time_on, "BAND": band, "FREQ": freq, "MODE": mode,
+             "RST_SENT": "-10", "RST_RCVD": "-12", "STATION_CALLSIGN": "F4XYZ", "MY_GRIDSQUARE": "JN37QS",
+             "APP_WAVELOG_DUMMY": "x"}
+        adif = "".join("<%s:%d>%s " % (k, len(v), v) for k, v in f.items()) + "<eor>"
+        with self.lock:
+            self.qsos.append((call, time_on, adif, "7"))
+
     def close(self):
         self.server.shutdown()
         self.server.server_close()
+
+
+class FakeHRDReceiver:
+    """Imite la réception UDP de HRD (ADIF). Avec `echo_port`, renvoie chaque QSO reçu à l'app
+    comme le fait HRD avec son envoi UDP (QSO Forwarding)."""
+
+    def __init__(self, echo_port=None):
+        self.received = []
+        self.echo_port = echo_port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.settimeout(0.5)
+        self.port = self.sock.getsockname()[1]
+        self._stop = threading.Event()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                data, _src = self.sock.recvfrom(65535)
+            except (socket.timeout, OSError):
+                continue
+            text = data.decode("cp1252")
+            self.received.append(text)
+            if self.echo_port:
+                call = re.search(r"<call:\d+>(\S+)", text).group(1)
+                date = re.search(r"<qso_date:\d+>(\d{8})", text).group(1)
+                tm = re.search(r"<time_on:\d+>(\d{6})", text).group(1)
+                freq = re.search(r"<freq:\d+>([\d.]+)", text).group(1)
+                ts = "%s-%s-%s %s:%s:%s" % (date[:4], date[4:6], date[6:], tm[:2], tm[2:4], tm[4:])
+                send_contact(self.echo_port, call, "echo-%d" % len(self.received), ts=ts,
+                             band=str(int(float(freq))), freq=str(int(float(freq) * 1e6)))
+
+    def calls(self):
+        return [re.search(r"<call:\d+>(\S+)", r).group(1) for r in self.received]
+
+    def close(self):
+        self._stop.set()
+        self.sock.close()

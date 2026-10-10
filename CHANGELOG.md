@@ -1,5 +1,13 @@
 # Journal des versions / Changelog
 
+## 1.2.0 — 2026-10-10
+
+- **Synchronisation dans les deux sens :** les QSO ajoutés dans Wavelog ailleurs (radio-club, portable, concours…) sont récupérés toutes les 2 minutes (API `get_contacts_adif`) et ajoutés dans HRD Logbook par sa réception UDP (port 2333), comme pour WSJT-X. Stations Wavelog suivies au choix.
+- **Pas de doublons :** un QSO venu de HRD n'y revient pas, l'« écho » renvoyé par HRD est ignoré, et un QSO déjà présent dans HRD (import manuel…) n'y est pas ajouté une deuxième fois.
+- **Nouveau bouton « Comparer les deux logs… »** : affiche, date par date, les QSO manquants de chaque côté et les ajoute en un clic. Il remplace « Envoyer tout le log HRD… ». Rien n'est jamais supprimé.
+- Nouvelle colonne « Sens » dans la liste (HRD → Wavelog / Wavelog → HRD).
+- Si HRD est fermé, les QSO venus de Wavelog attendent et sont ajoutés dès son ouverture.
+
 ## 1.1.0 — 2026-10-09
 
 - **Nouveau fonctionnement :** l'app reçoit les QSO que HRD Logbook lui envoie (*QSO Forwarding*, envoi UDP, port 12060 par défaut) au lieu de surveiller le fichier du log. Elle n'ouvre plus le log HRD, sauf pour « Envoyer tout le log HRD… ». Ce comportement est aussi beaucoup moins susceptible d'inquiéter les antivirus.

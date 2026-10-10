@@ -1,8 +1,12 @@
-"""Logique du pont HRD Logbook -> Wavelog (sans interface graphique).
+"""Logique du pont HRD Logbook <-> Wavelog (sans interface graphique).
 
-HRD Logbook envoie chaque nouveau QSO en UDP (« QSO Forwarding », envoi UDP, format XML
-<contactinfo> type N1MM) : l'app écoute ce port sur la machine locale, convertit le QSO en
-ADIF et l'envoie à Wavelog par son API (POST index.php/api/qso, clé API en écriture).
+HRD -> Wavelog : HRD Logbook envoie chaque nouveau QSO en UDP (« QSO Forwarding », envoi UDP,
+format XML <contactinfo> type N1MM) : l'app écoute ce port sur la machine locale, convertit le
+QSO en ADIF et l'envoie à Wavelog par son API (POST index.php/api/qso, clé API en écriture).
+
+Wavelog -> HRD : l'app demande régulièrement à Wavelog les QSO ajoutés depuis la dernière fois
+(POST index.php/api/get_contacts_adif) et envoie ceux qui ne viennent pas de HRD à la réception
+UDP de HRD (ADIF, port 2333 par défaut), comme le font WSJT-X ou JS8Call.
 
 Le fichier du log HRD (.hrdsql) n'est lu QUE si l'utilisateur demande « Envoyer tout le log »,
 en lecture seule, et seulement les champs du QSO (pas d'adresse, e-mail, notes…).
@@ -18,21 +22,26 @@ import socket
 import sqlite3
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .i18n import t
 
 APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
 DEFAULT_CONFIG = {
     "udp_port": 12060,        # port de l'envoi UDP de HRD (QSO Forwarding)
+    "hrd_in_port": 2333,      # port de la réception UDP de HRD (QSO Forwarding), pour Wavelog -> HRD
+    "download_enabled": True, # copier dans HRD les QSO ajoutés dans Wavelog
+    "download_stations": [],  # stations Wavelog à suivre (vide = la station configurée)
+    "wl_last_id": None,       # dernier identifiant Wavelog déjà vu (None = partir de maintenant)
     "hrd_db": "",             # fichier .hrdsql, utilisé seulement pour « Envoyer tout le log »
     "wavelog_url": "",        # ex. https://wavelog.example.org
     "api_key": "",
@@ -376,6 +385,127 @@ def upload_qso(url, key, station_id, fields):
     raise WavelogError(re.sub(r"<[^>]+>", " ", text).strip() or str(status))
 
 
+def fetch_wavelog(url, key, station_ids, from_id):
+    """QSO de Wavelog dont l'identifiant est > from_id. Retourne (liste de champs, dernier identifiant)."""
+    res = _request(_base(url) + "get_contacts_adif",
+                   {"key": key.strip(), "station_id": [int(s) for s in station_ids], "fetchfromid": int(from_id)},
+                   timeout=180)
+    if res.get("status") != "successful":
+        raise WavelogError(res.get("reason") or res.get("message") or str(res.get("status")))
+    return parse_adif(res.get("adif") or ""), int(res.get("lastfetchedid") or from_id)
+
+
+# --------------------------------------------------------------------------- HRD : réception UDP (Wavelog -> HRD)
+
+_ADIF_TAG = re.compile(r"<([A-Za-z0-9_]+):(\d+)(?::[A-Za-z])?>")
+
+
+def parse_adif(text):
+    """Texte ADIF -> liste de dict (clés en majuscules), en-tête ignoré."""
+    low = text.lower()
+    if "<eoh>" in low:
+        text = text[low.find("<eoh>") + 5:]
+    out = []
+    for rec in re.split(r"(?i)<eor>", text):
+        f, pos = {}, 0
+        while True:
+            m = _ADIF_TAG.search(rec, pos)
+            if not m:
+                break
+            n = int(m.group(2))
+            f[m.group(1).upper()] = rec[m.end():m.end() + n]
+            pos = m.end() + n
+        if f.get("CALL"):
+            out.append(f)
+    return out
+
+
+def fields_for_hrd(f):
+    """QSO venant de Wavelog -> champs ADIF envoyés à HRD (champs du QSO uniquement)."""
+    out = {k: str(f[k]).strip() for k in _DB_FIELDS if str(f.get(k, "")).strip()}
+    if "BAND" in out:
+        out["BAND"] = out["BAND"].lower()
+    if "CALL" in out:
+        out["CALL"] = out["CALL"].upper()
+    return out
+
+
+def hrd_listening(port):
+    """Vrai si HRD (ou un autre programme) écoute déjà ce port UDP sur la machine locale."""
+    for addr in ("0.0.0.0", "127.0.0.1"):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.bind((addr, int(port)))
+        except OSError:
+            return True
+        finally:
+            s.close()
+    return False
+
+
+def send_to_hrd(fields, port):
+    payload = build_adif_record(fields).encode("cp1252", errors="replace")
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.sendto(payload, ("127.0.0.1", int(port)))
+
+
+# --------------------------------------------------------------------------- comparaison
+
+MATCH_MINUTES = 15  # même règle que Wavelog pour les doublons
+
+
+def qso_time(f):
+    d, tm = f.get("QSO_DATE", ""), (f.get("TIME_ON", "") + "000000")[:6]
+    try:
+        return datetime.strptime(d + tm, "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+def qso_sig(f):
+    return "%s|%s|%s|%s" % (f.get("CALL", "").upper(), (f.get("BAND") or "").lower(),
+                            f.get("QSO_DATE", ""), f.get("TIME_ON", "")[:4])
+
+
+class QsoIndex:
+    """Retrouve un QSO « identique » (même indicatif, même bande, à 15 minutes près).
+    Le mode n'est pas comparé : HRD et Wavelog ne l'écrivent pas pareil (PSK31 / PSK+PSK31…)."""
+
+    def __init__(self, qsos=()):
+        self.by_key = {}
+        for f in qsos:
+            self.add(f)
+
+    @staticmethod
+    def _key(f):
+        return f.get("CALL", "").upper().strip(), (f.get("BAND") or "").lower()
+
+    def add(self, f):
+        t0 = qso_time(f)
+        if t0:
+            self.by_key.setdefault(self._key(f), []).append([t0, False])
+
+    def find(self, f, consume=False):
+        t0 = qso_time(f)
+        if not t0:
+            return False
+        for entry in self.by_key.get(self._key(f), []):
+            if not entry[1] and abs(entry[0] - t0) <= timedelta(minutes=MATCH_MINUTES):
+                if consume:
+                    entry[1] = True
+                return True
+        return False
+
+
+def compare_logs(hrd_qsos, wl_qsos):
+    """Retourne (dans Wavelog seulement, dans HRD seulement)."""
+    hrd_idx = QsoIndex(hrd_qsos)
+    wl_only = [f for f in wl_qsos if not hrd_idx.find(f, consume=True)]
+    wl_idx = QsoIndex(wl_qsos)
+    hrd_only = [f for f in hrd_qsos if not wl_idx.find(f, consume=True)]
+    return wl_only, hrd_only
+
+
 # --------------------------------------------------------------------------- historique
 
 class History:
@@ -412,16 +542,23 @@ class History:
                     return item
         return None
 
-    def add(self, key, fields, status, message=""):
-        item = {"hrd_key": key, "fields": fields, "status": status, "message": message,
+    def add(self, key, fields, status, message="", direction="up"):
+        """direction : "up" = HRD -> Wavelog, "down" = Wavelog -> HRD."""
+        item = {"hrd_key": key, "fields": fields, "status": status, "message": message, "dir": direction,
                 "time": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         with self.lock:
             self.items.append(item)
         return item
 
-    def pending(self):
+    def pending(self, direction="up"):
         with self.lock:
-            return [i for i in self.items if i["status"] == "pending"]
+            return [i for i in self.items if i["status"] == "pending" and i.get("dir", "up") == direction]
+
+    def index(self, direction=None):
+        """Index des QSO de l'historique (pour reconnaître un QSO déjà connu)."""
+        with self.lock:
+            return QsoIndex(i["fields"] for i in self.items
+                            if direction is None or i.get("dir", "up") == direction)
 
     def snapshot(self):
         with self.lock:
@@ -463,13 +600,15 @@ class UDPListener(threading.Thread):
 
 
 class Syncer(threading.Thread):
-    """Reçoit les QSO de HRD et les envoie à Wavelog (thread de fond).
+    """Moteur de fond : reçoit les QSO de HRD (-> Wavelog) et récupère ceux de Wavelog (-> HRD).
 
     `post(event, *args)` remonte les événements vers l'interface :
       ("hrd", ok, info) ("wl", "ok"|"bad"|"unset") ("log", text) ("refresh",) ("sent", call)
+      ("compare", wl_only, hrd_only) ("compare_error", message)
     """
 
     RETRY_SECONDS = 30
+    DOWNLOAD_SECONDS = 120
 
     def __init__(self, cfg, history, post):
         super().__init__(daemon=True)
@@ -479,6 +618,8 @@ class Syncer(threading.Thread):
         self._wl_state = None
         self._offline_logged = False
         self._need_check = True
+        self._last_download = 0.0
+        self._hrd_closed_logged = False
 
     # commandes envoyées par l'interface (ou par l'écoute UDP)
     def wake(self):
@@ -490,8 +631,11 @@ class Syncer(threading.Thread):
     def resend(self, keys):
         self.cmds.put(("resend", list(keys)))
 
-    def send_whole_log(self):
-        self.cmds.put(("history",))
+    def compare(self):
+        self.cmds.put(("compare",))
+
+    def add_missing(self, to_hrd, to_wavelog):
+        self.cmds.put(("add_missing", list(to_hrd), list(to_wavelog)))
 
     def reconfigure(self):
         self.cmds.put(("reload",))
@@ -511,10 +655,11 @@ class Syncer(threading.Thread):
     def run(self):
         self.start_listener()
         while True:
-            try:
-                self.upload_cycle()
-            except Exception as e:  # le thread ne doit jamais mourir
-                self.post("log", t("log_internal", err=repr(e)))
+            for step in (self.upload_cycle, self.download_cycle):
+                try:
+                    step()
+                except Exception as e:  # le thread ne doit jamais mourir
+                    self.post("log", t("log_internal", err=repr(e)))
             try:
                 cmd = self.cmds.get(timeout=self.RETRY_SECONDS)
             except queue.Empty:
@@ -539,11 +684,13 @@ class Syncer(threading.Thread):
                 if item:
                     item["status"], item["message"] = "pending", ""
             self.save_history()
-        elif kind == "history":
-            self.queue_whole_log()
+        elif kind == "compare":
+            self.do_compare()
+        elif kind == "add_missing":
+            self.queue_missing(cmd[1], cmd[2])
         elif kind == "reload":
             old_port = self.listener.port if self.listener else None
-            self._need_check, self._wl_state = True, None
+            self._need_check, self._wl_state, self._last_download = True, None, 0.0
             if int(self.cfg.get("udp_port") or 12060) != old_port:
                 self.start_listener()
         return True
@@ -555,6 +702,13 @@ class Syncer(threading.Thread):
             self.post("log", t("log_save_error", err=e))
         self.post("refresh")
 
+    def save_config(self):
+        try:
+            save_config(self.cfg)
+        except OSError as e:
+            self.post("log", t("log_save_error", err=e))
+
+    # ----------------------------------------------------------------- HRD -> Wavelog
     def receive(self, data):
         try:
             kind, ident, fields = contact_from_xml(data)
@@ -564,6 +718,8 @@ class Syncer(threading.Thread):
         if kind == "contactinfo":
             if not fields.get("CALL") or self.history.find(ident):
                 return  # paquet vide ou déjà reçu (HRD peut l'envoyer deux fois)
+            if self.history.index("down").find(fields):
+                return  # écho d'un QSO que l'app vient elle-même d'ajouter dans HRD depuis Wavelog
             when, _ = qso_label(fields)
             self.post("log", t("log_new", call=call, when=when))
             self.history.add(ident, fields, "pending")
@@ -572,31 +728,6 @@ class Syncer(threading.Thread):
             self.post("log", t("log_replace", call=call))
         elif kind == "contactdelete":
             self.post("log", t("log_delete", call=call))
-
-    def queue_whole_log(self):
-        path = self.cfg["hrd_db"] or default_hrd_db()
-        if not path or not os.path.exists(path):
-            self.post("log", t("log_no_db"))
-            return
-        try:
-            rows = HRDReader(path).all_rows()
-        except (sqlite3.Error, OSError) as e:
-            self.post("log", t("log_hrd_error", err=e))
-            return
-        queued = 0
-        for row in rows:
-            key = "db:%s" % row["COL_PRIMARY_KEY"]
-            fields = row_to_fields(row)
-            old = self.history.find(key)
-            if not fields.get("CALL") or (old and old["status"] in ("sent", "dupe")):
-                continue
-            if old:
-                old.update(fields=fields, status="pending", message="")
-            else:
-                self.history.add(key, fields, "pending")
-            queued += 1
-        self.post("log", t("log_history", n=queued))
-        self.save_history()
 
     def _set_wl(self, state):
         if state != self._wl_state:
@@ -620,7 +751,7 @@ class Syncer(threading.Thread):
         self.upload_pending()
 
     def upload_pending(self):
-        pending = self.history.pending()
+        pending = self.history.pending("up")
         done = 0
         for item in pending:
             if not self.cmds.empty() and self.cmds.queue[0][0] == "stop":
@@ -657,3 +788,127 @@ class Syncer(threading.Thread):
                 self.save_history()
         if done:
             self.save_history()
+
+    # ----------------------------------------------------------------- Wavelog -> HRD
+    def stations(self):
+        return [s for s in (self.cfg.get("download_stations") or [self.cfg["station_id"]]) if str(s).strip()]
+
+    def download_cycle(self, force=False):
+        if is_configured(self.cfg) and self.cfg.get("download_enabled", True):
+            if force or time.time() - self._last_download >= self.DOWNLOAD_SECONDS:
+                self._last_download = time.time()
+                self.fetch_new_from_wavelog()
+        self.push_to_hrd()  # aussi les QSO ajoutés via « Comparer les deux logs »
+
+    def fetch_new_from_wavelog(self):
+        first = self.cfg.get("wl_last_id") is None
+        try:
+            qsos, last_id = fetch_wavelog(self.cfg["wavelog_url"], self.cfg["api_key"], self.stations(),
+                                          0 if first else self.cfg["wl_last_id"])
+        except WavelogOffline:
+            return
+        except WavelogError as e:
+            self.post("log", t("log_fetch_error", err=e))
+            return
+        if first:  # point de départ : on ne recopie pas l'existant (voir « Comparer les deux logs »)
+            self.cfg["wl_last_id"] = last_id
+            self.save_config()
+            self.post("log", t("log_download_start"))
+            return
+        known = self.history.index()
+        candidates = [f for f in qsos if not known.find(f)]  # pas venu de HRD par l'app, pas déjà copié
+        if candidates:
+            # Déjà dans HRD par un autre chemin (import ADIF manuel…) ? On vérifie dans le log HRD,
+            # en lecture seule, et seulement quand Wavelog a vraiment du nouveau.
+            path = self.cfg["hrd_db"] or default_hrd_db()
+            if path and os.path.exists(path):
+                try:
+                    in_hrd = QsoIndex(row_to_fields(r) for r in HRDReader(path).all_rows())
+                    candidates = [f for f in candidates if not in_hrd.find(f)]
+                except (sqlite3.Error, OSError) as e:
+                    self.post("log", t("log_hrd_error", err=e))
+                    return  # on réessaiera : mieux vaut attendre que créer des doublons
+        added = 0
+        for f in candidates:
+            if known.find(f):
+                continue  # doublon à l'intérieur même de cette récupération
+            fields = fields_for_hrd(f)
+            if not fields.get("CALL"):
+                continue
+            self.history.add("wl:" + qso_sig(fields), fields, "pending", direction="down")
+            known.add(fields)
+            added += 1
+            if added <= 5:
+                when, call = qso_label(fields)
+                self.post("log", t("log_from_wavelog", call=call, when=when))
+        if added > 5:
+            self.post("log", t("log_from_wavelog_many", n=added))
+        self.cfg["wl_last_id"] = last_id
+        self.save_config()
+        if added:
+            self.save_history()
+
+    def push_to_hrd(self):
+        pending = self.history.pending("down")
+        if not pending:
+            return
+        port = int(self.cfg.get("hrd_in_port") or 2333)
+        if not hrd_listening(port):
+            if not self._hrd_closed_logged:
+                self._hrd_closed_logged = True
+                self.post("log", t("log_hrd_closed", n=len(pending), port=port))
+            return
+        self._hrd_closed_logged = False
+        for item in pending:
+            try:
+                send_to_hrd(item["fields"], port)
+            except OSError as e:
+                item["status"], item["message"] = "error", str(e)[:300]
+                continue
+            item["status"], item["message"] = "imported", ""
+            if len(pending) <= 5:
+                self.post("log", t("log_imported", call=item["fields"].get("CALL", "?")))
+            time.sleep(0.05)  # laisser HRD enregistrer chaque QSO
+        if len(pending) > 5:
+            self.post("log", t("log_imported_many", n=len(pending)))
+        self.save_history()
+
+    # ----------------------------------------------------------------- comparaison des deux logs
+    def do_compare(self):
+        if not is_configured(self.cfg):
+            self.post("compare_error", t("err_missing"))
+            return
+        path = self.cfg["hrd_db"] or default_hrd_db()
+        if not path or not os.path.exists(path):
+            self.post("compare_error", t("log_no_db"))
+            return
+        try:
+            hrd_qsos = [row_to_fields(r) for r in HRDReader(path).all_rows()]
+        except (sqlite3.Error, OSError) as e:
+            self.post("compare_error", t("log_hrd_error", err=e))
+            return
+        try:
+            wl_qsos, last_id = fetch_wavelog(self.cfg["wavelog_url"], self.cfg["api_key"], self.stations(), 0)
+        except WavelogError as e:
+            self.post("compare_error", t("log_fetch_error", err=e))
+            return
+        if self.cfg.get("wl_last_id") is None:
+            self.cfg["wl_last_id"] = last_id
+            self.save_config()
+        # ce qui est déjà en file d'attente n'est plus « manquant »
+        queued = QsoIndex(i["fields"] for i in self.history.snapshot() if i["status"] in ("pending", "imported"))
+        wl_only, hrd_only = compare_logs([f for f in hrd_qsos if f.get("CALL")], wl_qsos)
+        wl_only = [fields_for_hrd(f) for f in wl_only if not queued.find(f)]
+        hrd_only = [f for f in hrd_only if not queued.find(f)]
+        self.post("compare", wl_only, hrd_only)
+
+    def queue_missing(self, to_hrd, to_wavelog):
+        for f in to_hrd:
+            self.history.add("wl:" + qso_sig(f), f, "pending", direction="down")
+        for f in to_wavelog:
+            self.history.add("cmp:" + qso_sig(f), f, "pending")
+        if to_hrd:
+            self.post("log", t("log_queued_to_hrd", n=len(to_hrd)))
+        if to_wavelog:
+            self.post("log", t("log_queued_to_wavelog", n=len(to_wavelog)))
+        self.save_history()

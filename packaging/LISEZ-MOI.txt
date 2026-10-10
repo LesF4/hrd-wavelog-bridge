@@ -1,4 +1,4 @@
-﻿HRD Logbook -> Wavelog (HRDtoWavelog)
+﻿HRD Logbook <-> Wavelog (HRDtoWavelog)
 © 2026 F4MAJ / Jean-Bernard — licence MIT — https://github.com/LesF4/hrd-wavelog-bridge
 
 (English below)
@@ -7,14 +7,18 @@
  FRANÇAIS — CONFIGURATION (une seule fois, 3 minutes)
 =====================================================================
 
-Chaque nouveau QSO enregistré dans HRD Logbook (à la main, depuis
-WSJT-X, JS8Call…) part automatiquement dans ton Wavelog. C'est HRD qui
-envoie le QSO à l'app : elle n'ouvre pas ton fichier de log.
+L'app garde ton log HRD Logbook et ton Wavelog identiques :
+- chaque QSO enregistré dans HRD part tout seul dans Wavelog ;
+- chaque QSO ajouté dans Wavelog ailleurs (radio-club, portable,
+  concours…) est recopié tout seul dans HRD quand HRD est ouvert.
+Rien n'est jamais supprimé, l'app ne fait que des ajouts.
 
-1) Dans HRD Logbook : activer l'envoi des QSO
-   - menu Tools > Configure > QSO Forwarding
-   - partie envoi UDP (« UDP Send ») : coche l'envoi des QSO,
+1) Dans HRD Logbook : menu Tools > Configure > QSO Forwarding
+   - envoi UDP (« UDP Send ») : coche l'envoi des QSO,
      adresse 127.0.0.1 (ou localhost), port 12060
+   - réception UDP (« UDP Receive ») : coche la réception des QSO
+     d'autres programmes, port 2333, vers ton logbook
+     (la même case que pour WSJT-X ou JS8Call)
    - OK
 
 2) Dans Wavelog (navigateur) : créer une clé API
@@ -23,32 +27,33 @@ envoie le QSO à l'app : elle n'ouvre pas ton fichier de log.
    - copie la clé
 
 3) Dans l'app : bouton « Réglages… »
-   - Port UDP : 12060 (le même que dans HRD)
+   - Port UDP : 12060 (le même que l'envoi UDP de HRD)
    - Adresse : l'adresse de ton Wavelog, par ex. https://wavelog.monsite.fr
    - Clé API : colle la clé de l'étape 2
    - clique « Tester et charger les stations », choisis ta station
+   - partie « Wavelog → HRD » : copie activée, réception HRD 2333,
+     coche les stations à suivre
    - coche « Lancer automatiquement au démarrage de Windows »
-   - Enregistrer
+   - Enregistrer, puis accepte de comparer les deux logs
 
 Les deux voyants en haut de la fenêtre doivent être VERTS.
-C'est tout : chaque QSO enregistré dans HRD part seul vers Wavelog.
-Si Internet est coupé, les QSO attendent (⏳) et partent dès le retour
-de la connexion.
 
-IMPORTANT : l'app doit être lancée au moment où tu enregistres le QSO
-(HRD ne l'envoie qu'une fois), d'où le lancement avec Windows. Si des
-QSO ont été enregistrés pendant qu'elle était fermée, le bouton
-« Envoyer tout le log HRD… » les rattrape (Wavelog ignore les doublons).
+COMPARER LES DEUX LOGS
+Le bouton « Comparer les deux logs… » montre, date par date, les QSO
+qui manquent dans HRD et ceux qui manquent dans Wavelog, et les ajoute
+en un clic. À utiliser au départ, après un concours saisi ailleurs, ou
+si l'app a été fermée pendant que tu enregistrais des QSO dans HRD.
 
 EN CAS DE SOUCI
-- Voyant HRD rouge : le port UDP est déjà utilisé. Choisis-en un autre
-  dans Réglages et mets le même dans HRD (QSO Forwarding).
-- Voyant HRD vert mais aucun QSO n'arrive : vérifie l'étape 1 (envoi
-  UDP activé dans HRD, vers 127.0.0.1, même port que l'app).
+- Voyant HRD rouge : le port UDP 12060 est déjà utilisé. Choisis-en un
+  autre dans Réglages et mets le même dans l'envoi UDP de HRD.
+- Aucun QSO n'arrive dans Wavelog : vérifie l'envoi UDP dans HRD
+  (étape 1).
+- QSO de Wavelog « En attente de HRD » : HRD doit être ouvert, avec la
+  réception UDP activée sur le port 2333 (étape 1).
 - Voyant Wavelog rouge : vérifie Internet et l'adresse de Wavelog.
 - « clé API invalide » ou « lecture seule » : crée une clé
   « Read & Write » dans Wavelog.
-- ✖ Refusé par Wavelog : la raison est affichée dans la liste.
 - Antivirus (Bitdefender notamment) qui bloque l'app : ajoute une
   exception pour HRDtoWavelog.exe et autorise-le dans le pare-feu de
   l'antivirus. L'app n'est pas signée, c'est une fausse alerte.
@@ -63,14 +68,17 @@ Aide, questions, idées : https://github.com/LesF4/hrd-wavelog-bridge/issues
  ENGLISH — SETUP (one time, 3 minutes)
 =====================================================================
 
-Every new QSO logged in HRD Logbook (by hand, from WSJT-X, JS8Call…)
-is automatically sent to your Wavelog. HRD itself sends the QSO to the
-app: the app does not open your log file.
+The app keeps your HRD Logbook and your Wavelog identical:
+- every QSO logged in HRD goes to Wavelog by itself;
+- every QSO added to Wavelog elsewhere (radio club, portable, contest…)
+  is copied into HRD by itself when HRD is open.
+Nothing is ever deleted, the app only adds.
 
-1) In HRD Logbook: turn on QSO sending
-   - Tools > Configure > QSO Forwarding
-   - UDP send section ("UDP Send"): enable sending QSOs,
+1) In HRD Logbook: Tools > Configure > QSO Forwarding
+   - UDP send ("UDP Send"): enable sending QSOs,
      address 127.0.0.1 (or localhost), port 12060
+   - UDP receive ("UDP Receive"): enable receiving QSOs from other
+     programs, port 2333, into your logbook (same box as for WSJT-X)
    - OK
 
 2) In Wavelog (web browser): create an API key
@@ -79,29 +87,31 @@ app: the app does not open your log file.
    - copy the key
 
 3) In the app: "Settings…" button
-   - UDP port: 12060 (the same as in HRD)
+   - UDP port: 12060 (the same as HRD's UDP send)
    - Address: your Wavelog address, e.g. https://wavelog.mysite.org
    - API key: paste the key from step 2
    - click "Test and load stations", pick your station
+   - "Wavelog → HRD" section: copy on, HRD receive 2333,
+     tick the stations to follow
    - tick "Start automatically with Windows"
-   - Save
+   - Save, then accept to compare both logs
 
 Both lights at the top of the window must be GREEN.
-That's it: every QSO logged in HRD goes to Wavelog by itself.
-If the Internet is down, QSOs wait (⏳) and are sent once it is back.
 
-IMPORTANT: the app must be running when you log the QSO (HRD sends it
-only once), hence starting with Windows. If QSOs were logged while it
-was closed, "Send the whole HRD log…" catches up (Wavelog skips dupes).
+COMPARE BOTH LOGS
+"Compare both logs…" shows, date by date, the QSOs missing in HRD and
+those missing in Wavelog, and adds them in one click. Use it at the
+start, after a contest logged elsewhere, or if the app was closed while
+you were logging QSOs in HRD.
 
 TROUBLESHOOTING
-- HRD light red: the UDP port is busy. Pick another one in Settings and
-  set the same one in HRD (QSO Forwarding).
-- HRD light green but no QSO arrives: check step 1 (UDP send on in HRD,
-  to 127.0.0.1, same port as the app).
+- HRD light red: UDP port 12060 is busy. Pick another one in Settings
+  and set the same one in HRD's UDP send.
+- No QSO reaches Wavelog: check UDP send in HRD (step 1).
+- Wavelog QSOs "Waiting for HRD": HRD must be open, with UDP receive on
+  port 2333 (step 1).
 - Wavelog light red: check the Internet and the Wavelog address.
 - "invalid API key" or "read-only": create a "Read & Write" key.
-- ✖ Rejected by Wavelog: the reason is shown in the list.
 - Antivirus (Bitdefender in particular) blocking the app: add an
   exception for HRDtoWavelog.exe and allow it in the antivirus firewall.
   The app is unsigned; this is a false alarm.
