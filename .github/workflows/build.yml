@@ -54,7 +54,7 @@ jobs:
           $tag = $env:GITHUB_REF_NAME
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "HRDtoWavelog $tag" --notes-file .github/release-notes.md
+            gh release create $tag --title "HRD Logbook ⇄ Wavelog $tag — synchro dans les deux sens" --notes-file .github/release-notes.md
           }
           $setup    = (Get-ChildItem packaging/dist/HRDtoWavelog-Setup-*.exe).FullName
           gh release upload $tag $setup --clobber
