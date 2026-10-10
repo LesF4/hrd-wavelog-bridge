@@ -868,7 +868,7 @@ class Syncer(threading.Thread):
             item["status"], item["message"] = "imported", ""
             if len(pending) <= 5:
                 self.post("log", t("log_imported", call=item["fields"].get("CALL", "?")))
-            time.sleep(0.05)  # laisser HRD enregistrer chaque QSO
+            time.sleep(0.3)  # laisser HRD enregistrer chaque QSO (il fait une recherche à chaque réception)
         if len(pending) > 5:
             self.post("log", t("log_imported_many", n=len(pending)))
         self.save_history()
