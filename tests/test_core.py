@@ -97,6 +97,13 @@ class ConversionTests(unittest.TestCase):
         keys = [h.add("cmp:x", f, "pending")["hrd_key"] for _ in range(3)]
         self.assertEqual(keys, ["cmp:x", "cmp:x#2", "cmp:x#3"])
 
+    def test_history_with_duplicate_keys_is_repaired_on_load(self):
+        h = core.History()
+        f = {"CALL": "G0ABC", "QSO_DATE": "20250309", "TIME_ON": "142215"}
+        h.items = [{"hrd_key": "cmp:x", "fields": f, "status": "error", "message": "", "dir": "up"}] * 2
+        h.save()
+        self.assertEqual([i["hrd_key"] for i in core.History().items], ["cmp:x", "cmp:x#2"])
+
     def test_same_keys_in_all_languages(self):
         self.assertEqual(set(i18n.TEXTS["fr"]), set(i18n.TEXTS["en"]))
 

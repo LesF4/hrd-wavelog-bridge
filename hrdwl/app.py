@@ -202,6 +202,8 @@ class App:
             when, call = core.qso_label(f)
             mode = f.get("SUBMODE") and "%s/%s" % (f.get("MODE", ""), f["SUBMODE"]) or f.get("MODE", "")
             iid = str(item["hrd_key"])
+            if self.tree.exists(iid):  # ne jamais planter sur une ligne en double
+                continue
             down = item.get("dir") == "down"
             status = item["status"]
             label = t("status_%s_down" % status) if down and status in ("pending", "error") else t("status_" + status)

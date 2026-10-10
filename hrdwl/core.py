@@ -32,7 +32,7 @@ from .i18n import t
 
 APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
@@ -527,8 +527,14 @@ class History:
                 self.items = json.load(f)
         except (OSError, ValueError):
             self.items = []
+        seen = set()
         for item in self.items:  # les identifiants de la 1.0 étaient des numéros
-            item["hrd_key"] = str(item["hrd_key"])
+            key = base = str(item["hrd_key"])
+            n = 2
+            while key in seen:  # historique d'une version précédente avec des doublons : on répare
+                key, n = "%s#%d" % (base, n), n + 1
+            item["hrd_key"] = key
+            seen.add(key)
 
     def save(self):
         with self.lock:

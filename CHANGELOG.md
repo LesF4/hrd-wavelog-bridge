@@ -1,5 +1,9 @@
 # Journal des versions / Changelog
 
+## 1.2.1 — 2026-10-10
+
+- Correctif : la 1.2.0 pouvait se fermer au démarrage si l'historique contenait deux fois le même QSO (doublon dans un log). L'historique est maintenant réparé automatiquement au démarrage, et la liste ne peut plus planter sur une ligne en double.
+
 ## 1.2.0 — 2026-10-10
 
 - **Synchronisation dans les deux sens :** les QSO ajoutés dans Wavelog ailleurs (radio-club, portable, concours…) sont récupérés toutes les 2 minutes (API `get_contacts_adif`) et ajoutés dans HRD Logbook par sa réception UDP (port 2333), comme pour WSJT-X. Stations Wavelog suivies au choix.
