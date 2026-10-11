@@ -1,3 +1,4 @@
+import json
 import os
 import queue
 import socket
@@ -167,6 +168,24 @@ class ConfigSafetyTests(unittest.TestCase):
         cfg = dict(self.good_cfg(), _note="interne")
         core.save_config(cfg)
         self.assertNotIn("_note", open(self.cfg_path, encoding="utf-8").read())
+
+    def test_settings_left_in_a_packaged_app_bubble_are_recovered(self):
+        bubble_root = tempfile.mkdtemp()
+        bubble = os.path.join(bubble_root, "Packages", "Claude_x", "LocalCache", "Roaming", core.APP_NAME)
+        os.makedirs(bubble)
+        with open(os.path.join(bubble, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(self.good_cfg("5"), f)
+        with open(os.path.join(bubble, "history.json"), "w", encoding="utf-8") as f:
+            json.dump([{"hrd_key": "a", "fields": {"CALL": "K1AB"}, "status": "sent", "dir": "up"}], f)
+        old = os.environ.get("LOCALAPPDATA")
+        os.environ["LOCALAPPDATA"] = bubble_root
+        try:
+            self.assertEqual(core.migrate_from_packaged_copy(), bubble)
+            self.assertTrue(core.is_configured(core.load_config(retries=1, delay=0)))
+            self.assertEqual(core.History(retries=1, delay=0).items[0]["hrd_key"], "a")
+            self.assertIsNone(core.migrate_from_packaged_copy())  # déjà configurée ici : on ne touche plus
+        finally:
+            os.environ["LOCALAPPDATA"] = old
 
     def test_unreadable_history_raises_instead_of_starting_empty(self):
         with open(self.hist_path, "w") as f:

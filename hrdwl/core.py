@@ -32,7 +32,7 @@ from .i18n import t
 
 APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
@@ -49,6 +49,7 @@ DEFAULT_CONFIG = {
     "start_minimized": False,
     "close_to_tray": True,
     "language": "auto",
+    "autostart_wanted": False,  # démarrage auto souhaité : réappliqué si Windows ne l'a plus
 }
 
 BANDS = [
@@ -67,6 +68,41 @@ def data_dir():
     path = os.path.join(base, APP_NAME)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+_MIGRATED_FILES = ("config.json", "config.json.bak", "history.json", "qsos_envoyes_wavelog.adi")
+
+
+def find_packaged_copies():
+    """Dossiers de données HRDtoWavelog créés « dans la bulle » d'une application Windows empaquetée
+    (MSIX, ex. l'app Claude) : quand l'app y a été lancée, Windows a redirigé %APPDATA% vers
+    %LOCALAPPDATA%\\Packages\\<app>\\LocalCache\\Roaming. Le plus récent d'abord."""
+    local = os.environ.get("LOCALAPPDATA", "")
+    found = glob.glob(os.path.join(local, "Packages", "*", "LocalCache", "Roaming", APP_NAME, "config.json"))
+    found = [os.path.dirname(p) for p in found if os.path.normcase(os.path.dirname(p)) != os.path.normcase(data_dir())]
+    return sorted(found, key=lambda d: os.path.getmtime(os.path.join(d, "config.json")), reverse=True)
+
+
+def migrate_from_packaged_copy():
+    """Si l'app n'a pas de réglages utilisables ici mais qu'une copie « dans la bulle » en a, on les
+    recopie ici (réglages, copie de secours, historique, sauvegarde ADIF). Retourne le dossier source ou None."""
+    here = os.path.join(data_dir(), "config.json")
+    try:
+        if is_configured(dict(DEFAULT_CONFIG, **_read_json(here))):
+            return None  # déjà configurée ici : on ne touche à rien
+    except (OSError, ValueError):
+        pass
+    for src in find_packaged_copies():
+        try:
+            if not is_configured(dict(DEFAULT_CONFIG, **_read_json(os.path.join(src, "config.json")))):
+                continue
+        except (OSError, ValueError):
+            continue
+        for name in _MIGRATED_FILES:
+            if os.path.exists(os.path.join(src, name)):
+                shutil.copy2(os.path.join(src, name), os.path.join(data_dir(), name))
+        return src
+    return None
 
 
 def _read_json(path):

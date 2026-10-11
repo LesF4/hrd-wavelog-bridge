@@ -78,10 +78,11 @@ def set_autostart(enabled):
                 pass
 
 
-def refresh_autostart():
-    """Si le démarrage auto est actif, le fait pointer vers l'exe actuel (après une mise à jour)."""
+def refresh_autostart(cfg=None):
+    """Fait pointer le démarrage auto vers l'exe actuel, et le recrée s'il est souhaité dans les
+    réglages mais que Windows ne l'a plus."""
     try:
-        if get_autostart():
+        if get_autostart() or (cfg or {}).get("autostart_wanted"):
             set_autostart(True)
     except OSError:
         pass
@@ -121,7 +122,7 @@ class App:
         self.build_ui()
         self.refresh_tree()
         self.start_tray()
-        refresh_autostart()
+        refresh_autostart(self.cfg)
 
         self.log(t("log_start", port=self.cfg["udp_port"]))
         if not core.is_configured(self.cfg):
@@ -544,7 +545,8 @@ class App:
                 hrd_db=db_var.get().strip(), wavelog_url=url_var.get().strip(),
                 api_key=key_var.get().strip(), station_id=sid,
                 language=next(k for k, lbl in langs.items() if lbl == lang_var.get()),
-                start_minimized=minimized_var.get(), close_to_tray=tray_var.get())
+                start_minimized=minimized_var.get(), close_to_tray=tray_var.get(),
+                autostart_wanted=autostart_var.get())
             core.save_config(self.cfg)
             try:
                 if autostart_var.get() != get_autostart():
@@ -664,7 +666,18 @@ def main():
         root.withdraw()
         messagebox.showinfo(core.APP_TITLE, t("already_running"))
         return
+    migrated = None
+    try:  # réglages restés « dans la bulle » d'une app empaquetée : on les récupère ici
+        migrated = core.migrate_from_packaged_copy()
+    except OSError:
+        pass
     cfg = core.load_config()
+    if migrated and not cfg.get("_unreadable"):
+        cfg["autostart_wanted"] = True
+        try:
+            core.save_config(cfg)
+        except OSError:
+            pass
     history = None
     if not cfg.get("_unreadable"):
         try:
