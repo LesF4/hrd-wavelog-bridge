@@ -1,5 +1,10 @@
 # Journal des versions / Changelog
 
+## 1.2.4 — 2026-10-11
+
+- **Réglages retrouvés automatiquement :** si l'app a été lancée un jour depuis une application Windows « empaquetée » (par exemple un assistant comme l'app Claude), Windows a pu ranger ses réglages dans un dossier séparé (`%LOCALAPPDATA%\Packages\…\LocalCache\Roaming\HRDtoWavelog`). Au démarrage, si l'app ne trouve pas de réglages, elle les récupère là, avec l'historique, et les enregistre au bon endroit. Plus besoin de tout ressaisir.
+- **Démarrage avec Windows plus fiable :** s'il est coché dans les Réglages mais que Windows ne l'a plus, l'app le remet en place toute seule.
+
 ## 1.2.3 — 2026-10-10
 
 - **Les réglages ne peuvent plus « disparaître » au démarrage :** si le fichier de réglages est momentanément illisible (bloqué par l'antivirus juste après l'allumage du PC, par exemple), l'app réessaie pendant quelques secondes, puis utilise sa **copie de secours** (`config.json.bak`, mise à jour à chaque enregistrement). Elle n'ouvre plus jamais des Réglages vides par-dessus une configuration existante.
