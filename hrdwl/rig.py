@@ -119,8 +119,15 @@ class HRDRig:
         """Modes proposés par HRD pour cette radio (menu « Mode »)."""
         return [m.strip() for m in self.command("get dropdown-list {Mode}").split(",") if m.strip()]
 
-    def set_mode(self, hrd_mode):
-        self.command("set dropdown-text {Mode} %s" % hrd_mode)
+    def set_mode(self, hrd_mode, available=None):
+        # Syntaxe de WSJT-X : « set dropdown Mode <texte> <rang dans la liste> » (la forme
+        # « set dropdown-text » est acceptée par HRD mais ne fait rien).
+        available = available or self.modes()
+        if hrd_mode not in available:
+            raise RigError("mode « %s » inconnu de la radio" % hrd_mode)
+        reply = self.command("set dropdown Mode %s %d" % (hrd_mode, available.index(hrd_mode)))
+        if reply.upper() != "OK":
+            raise RigError("HRD a répondu « %s »" % reply)
         now = self.command("get dropdown-text {Mode}")
         now = now.split(":", 1)[1].strip() if ":" in now else now
         if now.upper() != hrd_mode.upper():
@@ -325,9 +332,10 @@ class RigBridge(threading.Thread):
             return False, t("msg_qsy_disabled")
         target = ""
         try:
-            target = qsy_mode(mode, hz, self.rig.modes()) or ""
+            available = self.rig.modes()
+            target = qsy_mode(mode, hz, available) or ""
             if target and target.upper() != self.rig.state()[2].upper():
-                self.rig.set_mode(target)  # le mode d'abord : sur certaines radios il décale la fréquence
+                self.rig.set_mode(target, available)  # le mode d'abord : sur certaines radios il décale la fréquence
         except RigError as e:
             self.post("log", t("log_qsy_error", mhz="%.3f" % (hz / 1e6), err=e))
             target = ""

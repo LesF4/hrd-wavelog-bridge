@@ -258,9 +258,11 @@ class FakeHRDRig:
             return "Mode: %s" % self.mode
         if body == "get dropdown-list {Mode}":
             return "LSB,USB,CW,FM,AM,RTTY-LSB,CW-L,DATA-L,RTTY-USB,DATA-FM,FM-N,DATA-U,AM-N,PSK,DATA-FM-N"
-        if body.startswith("set dropdown-text {Mode} "):
-            self.mode = body.split("} ", 1)[1]
+        if body.startswith("set dropdown Mode "):  # comme le vrai HRD : « set dropdown Mode LSB 0 »
+            self.mode = body.split()[3]
             return "OK"
+        if body.startswith("set dropdown-text"):  # le vrai HRD l'accepte mais ne fait rien
+            return ""
         if body.startswith("set frequency-hz "):
             self.freq = int(body.split()[-1])
             return "OK"
