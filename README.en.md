@@ -80,6 +80,13 @@ Each line in the list shows its **direction**: *HRD → Wavelog* or *Wavelog →
 | ⏳ **Waiting** / **Waiting for HRD** | Wavelog unreachable, or HRD closed: it will be sent automatically. |
 | ✖ **Rejected by Wavelog** | The reason is in the *Details* column. Fix the QSO if needed, then **Resend selection**. |
 
+### Live radio in Wavelog (through HRD)
+
+If your radio is controlled by **HRD Rig Control**, the app continuously sends its **name, frequency and mode** to Wavelog. HRD keeps control of the radio, there is nothing extra to connect.
+- In Wavelog, on the QSO entry page, pick your radio in the **Radio** list (it has the name HRD gives it, e.g. `FTDX-101D-MP`): **frequency, band and mode fill in by themselves**.
+- **Click a cluster spot** in Wavelog: the radio tunes to the spot. The app receives the browser's request on local port `54321` (like WaveLogGate) and passes it to HRD. Only the frequency is set: **transmit is never controlled**.
+- The **Radio** light in the window shows what is sent. Both features can be turned off in *Settings → Live radio*.
+
 ### Compare both logs
 
 **Compare both logs…** reads your HRD log (read-only) and your Wavelog, then shows, date by date, the QSOs missing **in HRD** and those missing **in Wavelog**. You can then click **Add the … QSO(s) to HRD** and/or **Add the … QSO(s) to Wavelog**. Nothing is ever deleted. Handy at the start, after a contest logged elsewhere, or if the app was closed for a while.

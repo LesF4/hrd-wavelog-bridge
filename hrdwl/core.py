@@ -32,7 +32,7 @@ from .i18n import t
 
 APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.3.0"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
@@ -50,6 +50,10 @@ DEFAULT_CONFIG = {
     "close_to_tray": True,
     "language": "auto",
     "autostart_wanted": False,  # démarrage auto souhaité : réappliqué si Windows ne l'a plus
+    "rig_enabled": True,      # envoyer la fréquence / le mode de la radio (lus dans HRD) à Wavelog
+    "rig_port": 7809,         # HRD Rig Control (TCP, local)
+    "qsy_enabled": True,      # laisser Wavelog changer la fréquence (clic sur un spot)
+    "qsy_port": 54321,        # port local appelé par le navigateur pour le QSY (comme WaveLogGate)
 }
 
 BANDS = [
@@ -448,6 +452,15 @@ def station_profiles(url, key):
                                                          s.get("station_callsign", ""),
                                                          s.get("station_gridsquare", "")),
              str(s.get("station_active")) == "1") for s in res]
+
+
+def send_radio(url, payload):
+    """Envoie l'état de la radio à Wavelog (api/radio). Retourne True si accepté."""
+    try:
+        res = _request(_base(url) + "radio", payload, timeout=10)
+    except WavelogError:
+        return False
+    return isinstance(res, dict) and res.get("status") == "success"
 
 
 def upload_qso(url, key, station_id, fields):

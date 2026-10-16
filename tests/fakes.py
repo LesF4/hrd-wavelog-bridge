@@ -122,6 +122,10 @@ class FakeWavelog:
                 obj = json.loads(self.rfile.read(int(self.headers["Content-Length"])).decode())
                 if obj.get("key") != KEY:
                     return self.reply(401, {"status": "failed", "reason": "missing or wrong api key"})
+                if self.path.endswith("/radio"):  # état de la radio (api/radio)
+                    with outer.lock:
+                        outer.radio_updates.append(obj)
+                    return self.reply(200, {"status": "success"})
                 if self.path.endswith("/get_contacts_adif"):  # export des QSO d'identifiant > fetchfromid
                     since = int(obj["fetchfromid"])
                     with outer.lock:
@@ -141,6 +145,7 @@ class FakeWavelog:
                 self.reply(201, {"status": "created", "adif_count": 1, "adif_errors": 0})
 
         self.lock = threading.Lock()
+        self.radio_updates = []  # messages reçus sur api/radio
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.url = "http://127.0.0.1:%d" % self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -222,3 +227,66 @@ class FakeHRDReceiver:
     def close(self):
         self._stop.set()
         self.sock.close()
+
+
+class FakeHRDRig:
+    """Imite HRD Rig Control (TCP, messages UTF-16 avec en-tête 0x1234ABCD) avec une radio virtuelle."""
+
+    def __init__(self, radio="FTDX-101D-MP", freq=21074000, mode="DATA-U"):
+        import struct as _struct
+        self.radio, self.freq, self.mode, self.freq_b = radio, freq, mode, 21300000
+        self.commands = []
+        self.srv = socket.socket()
+        self.srv.bind(("127.0.0.1", 0))
+        self.srv.listen(5)
+        self.port = self.srv.getsockname()[1]
+        self._struct = _struct
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _answer(self, cmd):
+        self.commands.append(cmd)
+        body = cmd.split("] ", 1)[1] if cmd.startswith("[") else cmd
+        if body == "get radios":
+            return "523:%s" % self.radio
+        if body == "get radio":
+            return self.radio
+        if body == "get frequency":
+            return str(self.freq)
+        if body == "get frequencies":
+            return "%d-%d" % (self.freq, self.freq_b)
+        if body == "get dropdown-text {Mode}":
+            return "Mode: %s" % self.mode
+        if body.startswith("set frequency-hz "):
+            self.freq = int(body.split()[-1])
+            return "OK"
+        return "Unknown command"
+
+    def _accept(self):
+        while True:
+            try:
+                conn, _ = self.srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    def _serve(self, conn):
+        st = self._struct
+        buf = b""
+        with conn:
+            while True:
+                try:
+                    data = conn.recv(65536)
+                except OSError:
+                    return
+                if not data:
+                    return
+                buf += data
+                while len(buf) >= 16 and len(buf) >= st.unpack("<I", buf[:4])[0]:
+                    size = st.unpack("<I", buf[:4])[0]
+                    cmd = buf[16:size].decode("utf-16-le").rstrip("\0")
+                    buf = buf[size:]
+                    payload = (self._answer(cmd) + "\0").encode("utf-16-le")
+                    conn.sendall(st.pack("<IIII", 16 + len(payload), 0x1234ABCD, 0xABCD1234, 0) + payload)
+
+    def close(self):
+        self.srv.close()

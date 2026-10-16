@@ -1,5 +1,11 @@
 # Journal des versions / Changelog
 
+## 1.3.0 — 2026-10-16
+
+- **Radio en direct dans Wavelog, via HRD :** l'app lit la radio pilotée par HRD Rig Control (nom, fréquence, mode, VFO B) et l'envoie à Wavelog (API `radio`). La radio apparaît « en ligne » dans Wavelog, qui pré-remplit fréquence, bande et mode à la saisie d'un QSO, comme si elle y était branchée. HRD garde le contrôle de la radio : rien à brancher en plus.
+- **Clic sur un spot du cluster dans Wavelog → la radio change de fréquence :** l'app reçoit la demande (port local 54321, comme WaveLogGate) et la transmet à HRD. Seules la fréquence est réglée ; l'émission (PTT) n'est jamais commandée. Les fréquences absurdes sont refusées.
+- Nouveau voyant « Radio » dans la fenêtre, et deux options dans les Réglages (envoi de la radio, QSY depuis Wavelog), activées par défaut.
+
 ## 1.2.4 — 2026-10-11
 
 - **Réglages retrouvés automatiquement :** si l'app a été lancée un jour depuis une application Windows « empaquetée » (par exemple un assistant comme l'app Claude), Windows a pu ranger ses réglages dans un dossier séparé (`%LOCALAPPDATA%\Packages\…\LocalCache\Roaming\HRDtoWavelog`). Au démarrage, si l'app ne trouve pas de réglages, elle les récupère là, avec l'historique, et les enregistre au bon endroit. Plus besoin de tout ressaisir.

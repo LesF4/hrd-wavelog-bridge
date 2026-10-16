@@ -25,7 +25,7 @@ jobs:
         run: pip install pyinstaller pystray pillow
 
       - name: Tests
-        run: python -m unittest tests.test_core -v
+        run: python -m unittest tests.test_core tests.test_rig -v
 
       - name: Version = tag
         if: startsWith(github.ref, 'refs/tags/v')

@@ -10,7 +10,7 @@ import traceback
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
-from . import core
+from . import core, rig
 from .i18n import set_language, t
 
 try:
@@ -129,6 +129,9 @@ class App:
             self.log(t("log_need_setup"))
         self.syncer = core.Syncer(self.cfg, self.history, lambda *ev: self.events.put(ev))
         self.syncer.start()
+        self.rig_bridge = None
+        self.rig_state = ("disabled", "")
+        self.start_rig()
         root.after(200, self.poll_events)
         root.after(1000, self._heartbeat)
         if start_minimized or self.cfg["start_minimized"]:
@@ -146,6 +149,8 @@ class App:
         self.hrd_lbl.pack(side="left")
         self.wl_lbl = tk.Label(top, text="● Wavelog …", font=("Segoe UI", 10, "bold"), fg=ORANGE)
         self.wl_lbl.pack(side="left", padx=(24, 0))
+        self.rig_lbl = tk.Label(top, text="", font=("Segoe UI", 10, "bold"), fg=ORANGE)
+        self.rig_lbl.pack(side="left", padx=(24, 0))
         ttk.Button(top, text=t("btn_about"), command=self.about).pack(side="right")
         ttk.Button(top, text=t("btn_settings"), command=self.open_settings).pack(side="right", padx=6)
 
@@ -242,6 +247,13 @@ class App:
             self.wl_lbl.config(text=t("wl_bad"), fg=RED)
         elif self.wl_state == "unset":
             self.wl_lbl.config(text=t("wl_unset"), fg=ORANGE)
+        rig_state, rig_text = getattr(self, "rig_state", ("disabled", ""))
+        if rig_state == "ok":
+            self.rig_lbl.config(text=t("rig_ok", text=rig_text), fg=GREEN)
+        elif rig_state == "off":
+            self.rig_lbl.config(text=t("rig_off"), fg=ORANGE)
+        else:
+            self.rig_lbl.config(text="")
         if self.tray:
             title = "HRD → Wavelog — HRD %s — Wavelog %s" % ("✔" if ok else "✖", "✔" if self.wl_state == "ok" else "✖")
             tray = self.tray
@@ -277,6 +289,9 @@ class App:
                 elif kind == "compare_error":
                     self.root.config(cursor="")
                     messagebox.showerror(t("compare_title"), ev[1])
+                elif kind == "rig":
+                    self.rig_state = (ev[1], ev[2])
+                    self.set_indicators()
                 elif kind == "call":  # résultat d'un travail de fond à afficher dans la fenêtre
                     ev[1]()
                 elif kind == "show":
@@ -408,6 +423,8 @@ class App:
         download_var = tk.BooleanVar(value=self.cfg.get("download_enabled", True))
         hrd_in_var = tk.StringVar(value=str(self.cfg.get("hrd_in_port", 2333)))
         station_checks = []  # (id, BooleanVar)
+        rig_var = tk.BooleanVar(value=self.cfg.get("rig_enabled", True))
+        qsy_var = tk.BooleanVar(value=self.cfg.get("qsy_enabled", True))
 
         r = 0
         ttk.Label(frm, text=t("s_hrd"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w")
@@ -509,6 +526,15 @@ class App:
         ttk.Label(stations_frame, text=t("s_dl_stations_hint"), foreground="#666").pack(anchor="w")
         r += 1
 
+        ttk.Label(frm, text=t("s_rig"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w", pady=(14, 0))
+        r += 1
+        ttk.Checkbutton(frm, text=t("s_rig_enable"), variable=rig_var).grid(row=r, column=0, columnspan=3, sticky="w")
+        r += 1
+        ttk.Checkbutton(frm, text=t("s_qsy_enable"), variable=qsy_var).grid(row=r, column=0, columnspan=3, sticky="w")
+        r += 1
+        ttk.Label(frm, text=t("s_rig_hint"), foreground="#666").grid(row=r, column=0, columnspan=3, sticky="w")
+        r += 1
+
         ttk.Label(frm, text=t("s_options"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w", pady=(14, 0))
         r += 1
         ttk.Label(frm, text=t("s_language")).grid(row=r, column=0, sticky="w")
@@ -546,7 +572,7 @@ class App:
                 api_key=key_var.get().strip(), station_id=sid,
                 language=next(k for k, lbl in langs.items() if lbl == lang_var.get()),
                 start_minimized=minimized_var.get(), close_to_tray=tray_var.get(),
-                autostart_wanted=autostart_var.get())
+                autostart_wanted=autostart_var.get(), rig_enabled=rig_var.get(), qsy_enabled=qsy_var.get())
             core.save_config(self.cfg)
             try:
                 if autostart_var.get() != get_autostart():
@@ -560,6 +586,7 @@ class App:
                 self.restart_tray()
             self.log(t("log_settings_saved"))
             self.syncer.reconfigure()
+            self.start_rig()
             if not was_configured and messagebox.askyesno(core.APP_TITLE, t("first_setup_compare")):
                 self.compare_logs()
             self.syncer.wake()
@@ -652,7 +679,23 @@ class App:
         else:
             self.quit()
 
+    def start_rig(self):
+        """(Re)lance le pont radio HRD -> Wavelog selon les réglages."""
+        if self.rig_bridge:
+            self.rig_bridge.stop()
+            self.rig_bridge = None
+        if not core.is_configured(self.cfg) or not self.cfg.get("rig_enabled", True):
+            self.rig_state = ("disabled", "")
+            self.set_indicators()
+            return
+        cfg = self.cfg
+        self.rig_bridge = rig.RigBridge(cfg, lambda payload: core.send_radio(cfg["wavelog_url"], payload),
+                                        lambda *ev: self.events.put(ev))
+        self.rig_bridge.start()
+
     def quit(self):
+        if self.rig_bridge:
+            self.rig_bridge.stop()
         self.syncer.stop()
         if self.tray:
             self.tray.stop()
