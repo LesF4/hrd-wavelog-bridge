@@ -138,9 +138,9 @@ def wavelog_mode(hrd_mode):
 
 
 def radio_payload(key, radio, freq, mode, rx=None, cat_url=None):
+    # Le VFO B n'est PAS une fréquence de réception séparée (sauf en split, que HRD ne signale pas
+    # simplement) : on n'envoie que la fréquence principale, sinon Wavelog affiche un faux split.
     p = {"key": key, "radio": radio[:250], "frequency": int(freq), "mode": wavelog_mode(mode)}
-    if rx and rx != freq:
-        p["frequency_rx"] = int(rx)
     if cat_url:
         p["cat_url"] = cat_url
     return p

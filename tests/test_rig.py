@@ -84,8 +84,8 @@ class RigBridgeTests(unittest.TestCase):
     def test_radio_state_reaches_wavelog_and_follows_changes(self):
         self.assertTrue(wait_for(lambda: len(self.wl.radio_updates) >= 1))
         first = self.wl.radio_updates[0]
-        self.assertEqual((first["radio"], first["frequency"], first["mode"], first["frequency_rx"]),
-                         ("FTDX-101D-MP", 21074000, "USB", 21300000))
+        self.assertEqual((first["radio"], first["frequency"], first["mode"]), ("FTDX-101D-MP", 21074000, "USB"))
+        self.assertNotIn("frequency_rx", first)  # le VFO B n'est pas une fréquence de réception (pas de faux split)
         self.assertEqual(first["cat_url"], "http://127.0.0.1:%d" % self.qsy_port)
         self.assertEqual(first["key"], fakes.KEY)
         time.sleep(1)
