@@ -56,7 +56,16 @@ python -m unittest tests.test_core
 
 Bitdefender (Advanced Threat Defense) a mis la 1.0 en quarantaine (« lit une base locale + envoie sur
 Internet » = profil de voleur de données). Depuis la 1.1, HRD envoie lui-même les QSO (pas de lecture
-du log en continu). Ne jamais contourner un antivirus : documenter l'exception à ajouter.
+du log en continu). Fausse alerte signalée à Bitdefender : reconnue et corrigée dans leurs signatures
+(octobre 2026). Ne jamais contourner un antivirus : documenter l'exception à ajouter.
+
+## Lancer l'app depuis un outil
+
+Un programme lancé depuis une application Windows empaquetée (MSIX, ex. l'app Claude desktop) voit son
+`%APPDATA%` (et une partie de HKCU) redirigé vers `%LOCALAPPDATA%\Packages\<app>\LocalCache\…`. Les réglages
+enregistrés ainsi sont invisibles quand l'utilisateur lance l'app normalement. Depuis la 1.2.4, l'app les
+récupère d'elle-même (`migrate_from_packaged_copy`) ; mais ne jamais lancer l'app ni son installeur depuis un
+outil pour un vrai utilisateur : c'est lui qui la lance.
 
 ## Construire et publier
 

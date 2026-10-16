@@ -102,7 +102,7 @@ Les QSO sont ajoutés dans HRD **un par un** : l'app attend que HRD ait enregist
 | Voyant **Wavelog rouge** | Vérifie ta connexion Internet et l'adresse de Wavelog. |
 | « clé API invalide » / « lecture seule » | Crée une clé **Read & Write** dans Wavelog et colle-la dans *Réglages*. |
 | Un QSO modifié ou supprimé après coup | Seuls les **nouveaux** QSO sont synchronisés. Une correction ou une suppression est à faire des deux côtés. |
-| Antivirus qui bloque | L'app n'est pas signée, lit ton log HRD et communique avec Internet, ce qui peut inquiéter certains antivirus (Bitdefender notamment). Ajoute une exception pour `HRDtoWavelog.exe` et autorise-le dans le pare-feu de l'antivirus. |
+| Antivirus qui bloque | L'app n'est pas signée, lit ton log HRD et communique avec Internet, ce qui peut inquiéter certains antivirus. **Bitdefender** l'avait signalée à tort : après analyse, il a reconnu la fausse alerte et l'a corrigée dans ses signatures (octobre 2026). Mets ton antivirus à jour. Si un antivirus la bloque encore, ajoute une exception pour `HRDtoWavelog.exe` et autorise-le dans son pare-feu. |
 
 Une question, un bug, une idée ? Ouvre une [**issue**](https://github.com/LesF4/hrd-wavelog-bridge/issues).
 

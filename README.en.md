@@ -100,7 +100,7 @@ QSOs are added to HRD **one at a time**: the app waits until HRD has saved each 
 | **Wavelog light red** | Check your Internet connection and the Wavelog address. |
 | "invalid API key" / "read-only" | Create a **Read & Write** key in Wavelog and paste it into *Settings*. |
 | A QSO edited or deleted afterwards | Only **new** QSOs are synced. Corrections and deletions must be done on both sides. |
-| Antivirus blocks it | The app is unsigned, reads your HRD log and talks to the Internet, which can worry some antivirus programs (Bitdefender in particular). Add an exception for `HRDtoWavelog.exe` and allow it in the antivirus firewall. |
+| Antivirus blocks it | The app is unsigned, reads your HRD log and talks to the Internet, which can worry some antivirus programs. **Bitdefender** had flagged it by mistake: after analysis, it confirmed the false positive and fixed it in its signatures (October 2026). Update your antivirus. If one still blocks it, add an exception for `HRDtoWavelog.exe` and allow it in its firewall. |
 
 Question, bug, idea? Open an [**issue**](https://github.com/LesF4/hrd-wavelog-bridge/issues).
 

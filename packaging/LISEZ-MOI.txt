@@ -54,9 +54,10 @@ EN CAS DE SOUCI
 - Voyant Wavelog rouge : vérifie Internet et l'adresse de Wavelog.
 - « clé API invalide » ou « lecture seule » : crée une clé
   « Read & Write » dans Wavelog.
-- Antivirus (Bitdefender notamment) qui bloque l'app : ajoute une
-  exception pour HRDtoWavelog.exe et autorise-le dans le pare-feu de
-  l'antivirus. L'app n'est pas signée, c'est une fausse alerte.
+- Antivirus qui bloque l'app : mets-le à jour (Bitdefender a reconnu
+  et corrigé cette fausse alerte en octobre 2026). S'il bloque encore,
+  ajoute une exception pour HRDtoWavelog.exe et autorise-le dans le
+  pare-feu de l'antivirus. L'app n'est pas signée, c'est une fausse alerte.
 - Au premier lancement, Windows peut afficher « Windows a protégé votre
   ordinateur » : « Informations complémentaires » puis « Exécuter quand
   même ».
@@ -112,7 +113,8 @@ TROUBLESHOOTING
   port 2333 (step 1).
 - Wavelog light red: check the Internet and the Wavelog address.
 - "invalid API key" or "read-only": create a "Read & Write" key.
-- Antivirus (Bitdefender in particular) blocking the app: add an
+- Antivirus blocking the app: update it (Bitdefender confirmed and fixed
+  this false positive in October 2026). If it still blocks, add an
   exception for HRDtoWavelog.exe and allow it in the antivirus firewall.
   The app is unsigned; this is a false alarm.
 - On first start Windows may show "Windows protected your PC":
