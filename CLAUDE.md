@@ -18,6 +18,22 @@ Application Windows (Python 3 + tkinter, empaquetée avec PyInstaller + Inno Set
     réparés au chargement.
 - `hrdwl/app.py` : fenêtre tkinter, réglages, comparaison, barre de progression, icône (pystray),
   démarrage auto (clé `HKCU\...\Run`), instance unique (mutex).
+- `hrdwl/rig.py` (1.3.0) : **radio en direct**, HRD Rig Control ⇄ Wavelog.
+  - `HRDRig` : client TCP 7809 (protocole de WSJT-X : en-tête 16 octets `0x1234ABCD`/`0xABCD1234`,
+    texte UTF-16LE). `get radios`, `[ctx] get frequency`, `get dropdown-text {Mode}`,
+    `get dropdown-list {Mode}`, `set frequency-hz N`. Changer de mode : **`set dropdown Mode <texte> <rang>`**
+    (la forme `set dropdown-text {Mode} X` est acceptée mais ne fait rien, réponse vide).
+  - `RigBridge` : lit la radio toutes les 2 s, POST `index.php/api/radio` si changement ou toutes les 60 s.
+    Pas de `frequency_rx` (le VFO B n'est pas un split). Mode : celui de la radio (USB, LSB, CW, FM, AM,
+    RTTY) ; en **DATA, aucun mode** par défaut (`data_mode` = « none » : le logiciel numérique logge le bon
+    mode ; l'utilisateur a refusé « USB » et un FT8 deviné). Option « auto » = d'après la fréquence d'appel.
+  - `QSYServer` : 127.0.0.1:54321 (comme WaveLogGate), `GET /<hz>/<mode>` avec en-têtes CORS + Private
+    Network. Wavelog n'envoie que lsb/usb/cw/fm/am/rtty/pkt… ; pour un spot FT8/JS8/PSK il envoie « rtty »
+    → `qsy_mode()` passe en DATA-U si la fréquence est une fréquence d'appel. Le mode d'abord, puis la fréquence.
+  - Côté Wavelog : radio par défaut à choisir (Interfaces matérielles) ; DX Cluster → « Connexion CAT »,
+    clic = radio + formulaire QSO, Ctrl + clic = radio seule. **Opera** : son bloqueur de publicités bloque
+    l'appel à 127.0.0.1 (`ERR_BLOCKED_BY_CLIENT`) → exception pour le site Wavelog. Le navigateur intégré de
+    l'app Claude bloque aussi 127.0.0.1 : on ne peut pas y tester le QSY.
 - `hrdwl/i18n.py` : textes FR/EN (mêmes clés dans les deux langues, vérifié par un test).
 
 ## Règles importantes (apprises en conditions réelles)
@@ -40,10 +56,10 @@ Application Windows (Python 3 + tkinter, empaquetée avec PyInstaller + Inno Set
 ## Tests — sécurité
 
 ```bash
-python -m unittest tests.test_core
+python -m unittest tests.test_core tests.test_rig
 ```
 
-- `tests/fakes.py` : faux Wavelog (HTTP), faux HRD qui envoie (`send_contact`) et qui reçoit
+- `tests/fakes.py` : faux Wavelog (HTTP, reçoit aussi `/radio`), faux HRD Rig Control (`FakeHRDRig`), faux HRD qui envoie (`send_contact`) et qui reçoit
   (`FakeHRDReceiver`, enregistre dans un faux log, peut simuler un plantage).
 - **Ne jamais viser les vrais ports** (12060 / 2333) ni le vrai log en test : les tests prennent des
   ports libres et un `APPDATA` temporaire.
