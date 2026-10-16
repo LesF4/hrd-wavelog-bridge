@@ -120,8 +120,16 @@ class RigBridgeTests(unittest.TestCase):
         r = self.qsy("/14025000/cw")
         self.assertEqual(r.status, 200)
         self.assertEqual(r.headers["Access-Control-Allow-Origin"], "*")
-        self.assertEqual(self.fake.freq, 14025000)
-        self.assertTrue(wait_for(lambda: self.wl.radio_updates[-1]["frequency"] == 14025000))
+        self.assertEqual((self.fake.freq, self.fake.mode), (14025000, "CW"))
+        self.qsy("/21250000/usb")
+        self.assertEqual((self.fake.freq, self.fake.mode), (21250000, "USB"))
+        self.qsy("/7074000/rtty")                          # spot FT8 : Wavelog envoie « rtty »
+        self.assertEqual((self.fake.freq, self.fake.mode), (7074000, "DATA-U"))
+        self.qsy("/14085000/rtty")                         # vrai spot RTTY
+        self.assertEqual(self.fake.mode, "RTTY-LSB")
+        self.qsy("/14200000/xyz")                          # mode inconnu : on ne touche qu'à la fréquence
+        self.assertEqual((self.fake.freq, self.fake.mode), (14200000, "RTTY-LSB"))
+        self.assertTrue(wait_for(lambda: self.wl.radio_updates[-1]["frequency"] == 14200000))
 
     def test_qsy_preflight_and_bad_requests(self):
         self.assertTrue(wait_for(lambda: self.bridge.qsy is not None and self.bridge.qsy.httpd is not None))

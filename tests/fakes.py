@@ -256,6 +256,11 @@ class FakeHRDRig:
             return "%d-%d" % (self.freq, self.freq_b)
         if body == "get dropdown-text {Mode}":
             return "Mode: %s" % self.mode
+        if body == "get dropdown-list {Mode}":
+            return "LSB,USB,CW,FM,AM,RTTY-LSB,CW-L,DATA-L,RTTY-USB,DATA-FM,FM-N,DATA-U,AM-N,PSK,DATA-FM-N"
+        if body.startswith("set dropdown-text {Mode} "):
+            self.mode = body.split("} ", 1)[1]
+            return "OK"
         if body.startswith("set frequency-hz "):
             self.freq = int(body.split()[-1])
             return "OK"

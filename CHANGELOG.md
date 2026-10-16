@@ -4,7 +4,7 @@
 
 - **Radio en direct dans Wavelog, via HRD :** l'app lit la radio pilotée par HRD Rig Control (nom, fréquence, mode, VFO B) et l'envoie à Wavelog (API `radio`). La radio apparaît « en ligne » dans Wavelog, qui pré-remplit fréquence, bande et mode à la saisie d'un QSO, comme si elle y était branchée. HRD garde le contrôle de la radio : rien à brancher en plus.
 - **Clic sur un spot du cluster dans Wavelog → la radio change de fréquence :** l'app reçoit la demande (port local 54321, comme WaveLogGate) et la transmet à HRD. Seules la fréquence est réglée ; l'émission (PTT) n'est jamais commandée. Les fréquences absurdes sont refusées.
-- Mode : celui affiché par la radio (USB, LSB, CW, FM, AM, RTTY). En DATA-U / DATA-L, **aucun mode** n'est envoyé (ni « USB », ni un mode deviné) : le logiciel numérique enregistre lui-même le bon mode. En option : déduire le mode de la fréquence d'appel (FT8, FT4, JS8, PSK31) ou en imposer un. Le VFO B n'est plus présenté comme un « split ».
+- Mode : celui affiché par la radio (USB, LSB, CW, FM, AM, RTTY). En DATA-U / DATA-L, **aucun mode** n'est envoyé (ni « USB », ni un mode deviné) : le logiciel numérique enregistre lui-même le bon mode. En option : déduire le mode de la fréquence d'appel (FT8, FT4, JS8, PSK31) ou en imposer un. Clic sur un spot du DX Cluster : la radio change aussi de mode (USB, LSB, CW, FM, AM ; DATA-U pour un spot FT8 / JS8 / PSK sur sa fréquence d'appel, RTTY sinon). Le VFO B n'est plus présenté comme un « split ».
 - Nouveau voyant « Radio » dans la fenêtre, et deux options dans les Réglages (envoi de la radio, QSY depuis Wavelog), activées par défaut.
 
 ## 1.2.4 — 2026-10-11

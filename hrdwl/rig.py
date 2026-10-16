@@ -115,6 +115,17 @@ class HRDRig:
         if reply.upper() != "OK":
             raise RigError("HRD a répondu « %s »" % reply)
 
+    def modes(self):
+        """Modes proposés par HRD pour cette radio (menu « Mode »)."""
+        return [m.strip() for m in self.command("get dropdown-list {Mode}").split(",") if m.strip()]
+
+    def set_mode(self, hrd_mode):
+        self.command("set dropdown-text {Mode} %s" % hrd_mode)
+        now = self.command("get dropdown-text {Mode}")
+        now = now.split(":", 1)[1].strip() if ":" in now else now
+        if now.upper() != hrd_mode.upper():
+            raise RigError("la radio est restée en « %s »" % now)
+
 
 # Modes affichés par HRD (menu « Mode ») -> modes compris par Wavelog.
 # Modes « data » (DATA-U, DATA-L, DATA-FM…) : None = on n'envoie PAS de mode. Wavelog laisse alors le mode
@@ -128,6 +139,30 @@ _MODE_MAP = [
     (re.compile(r"^(FM|C4FM|NFM|WFM)", re.I), "FM"),
     (re.compile(r"^AM", re.I), "AM"),
 ]
+
+
+# Mode demandé par Wavelog lors d'un clic sur un spot -> noms possibles dans le menu « Mode » de HRD
+# (le premier qui existe pour la radio est choisi). Wavelog n'envoie que : lsb, usb, cw, fm, am, rtty,
+# pkt, dig, pktlsb, pktusb, pktfm ; pour un spot FT8, JS8, PSK… il envoie « rtty ».
+_DATA_U = ("DATA-U", "PKT-U", "USB-D", "DATA-USB", "PKTUSB")
+_QSY_MODES = {
+    "lsb": ("LSB",), "usb": ("USB",), "cw": ("CW", "CW-U", "CW-USB"), "fm": ("FM",), "am": ("AM",),
+    "rtty": ("RTTY-LSB", "RTTY-L", "RTTY", "FSK"),
+    "pkt": _DATA_U, "dig": _DATA_U, "pktusb": _DATA_U,
+    "pktlsb": ("DATA-L", "PKT-L", "LSB-D", "DATA-LSB", "PKTLSB"), "pktfm": ("DATA-FM", "PKT-FM", "FM-D"),
+}
+
+
+def qsy_mode(wl_mode, hz, available):
+    """Mode HRD à régler pour un spot Wavelog, ou None (mode inconnu ou absent de la radio)."""
+    key = (wl_mode or "").lower()
+    if key == "rtty" and guess_data_mode(hz):  # spot FT8 / FT4 / JS8 / PSK31 sur sa fréquence d'appel
+        key = "pktusb"
+    for name in _QSY_MODES.get(key, ()):
+        for m in available:
+            if m.upper() == name:
+                return m
+    return None
 
 
 DATA_MODES = ("none", "auto", "FT8", "FT4", "JS8", "PSK31", "RTTY")
@@ -288,12 +323,20 @@ class RigBridge(threading.Thread):
     def handle_qsy(self, hz, mode):
         if not self.cfg.get("qsy_enabled", True):
             return False, t("msg_qsy_disabled")
+        target = ""
+        try:
+            target = qsy_mode(mode, hz, self.rig.modes()) or ""
+            if target and target.upper() != self.rig.state()[2].upper():
+                self.rig.set_mode(target)  # le mode d'abord : sur certaines radios il décale la fréquence
+        except RigError as e:
+            self.post("log", t("log_qsy_error", mhz="%.3f" % (hz / 1e6), err=e))
+            target = ""
         try:
             self.rig.set_frequency(hz)
         except RigError as e:
             self.post("log", t("log_qsy_error", mhz="%.3f" % (hz / 1e6), err=e))
             return False, str(e)
-        self.post("log", t("log_qsy", mhz="%.3f" % (hz / 1e6)))
+        self.post("log", t("log_qsy", mhz="%.3f" % (hz / 1e6), mode=target))
         self._last_time = 0  # renvoyer tout de suite le nouvel état à Wavelog
         return True, "OK"
 

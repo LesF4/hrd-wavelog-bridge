@@ -84,7 +84,9 @@ Chaque ligne de la liste indique son **sens** : *HRD → Wavelog* ou *Wavelog �
 
 Si ta radio est pilotée par **HRD Rig Control**, l'app envoie en continu à Wavelog son **nom, sa fréquence et son mode**. HRD garde le contrôle de la radio, il n'y a rien à brancher en plus.
 - Dans Wavelog, sur la page de saisie d'un QSO, choisis ta radio dans la liste **Radio** (elle porte le nom donné par HRD, par exemple `FTDX-101D-MP`) : la **fréquence, la bande et le mode se remplissent tout seuls**.
-- **Clic sur un spot du cluster** dans Wavelog : la radio passe sur la fréquence du spot. L'app reçoit la demande du navigateur sur le port local `54321` (comme WaveLogGate) et la transmet à HRD. Seule la fréquence est réglée : **l'émission n'est jamais commandée**.
+- **Clic sur un spot du cluster** dans Wavelog : la radio passe sur la fréquence du spot. L'app reçoit la demande du navigateur sur le port local `54321` (comme WaveLogGate) et la transmet à HRD. La fréquence et le mode sont réglés (USB, LSB, CW, FM, AM ; DATA-U pour un spot FT8, JS8 ou PSK sur sa fréquence d'appel) : **l'émission n'est jamais commandée**.
+  - Dans la page *DX Cluster*, active d'abord **« Connexion CAT »**. Clic simple : la radio change et le spot part dans le formulaire QSO ; **Ctrl + clic** : la radio change seulement.
+  - Si rien ne se passe : le bloqueur de publicités du navigateur bloque souvent la demande (c'est le cas d'**Opera**). Ajoute ton site Wavelog à ses exceptions (Opera : Alt + P → « Bloquer les publicités » → « Gérer les exceptions »).
 - Le **mode** suit ce qu'affiche la radio : USB, LSB, CW, FM, AM, RTTY.
 - En **DATA** (DATA-U, DATA-L…), l'app n'envoie **aucun mode** (ni « USB », ni un mode deviné) : c'est le logiciel numérique (WSJT-X, JS8Call, DM-780…) qui enregistre le QSO avec le bon mode. Si tu préfères, *Réglages → Mode si radio en DATA* permet de le déduire de la fréquence d'appel (FT8, FT4, JS8, PSK31) ou d'en imposer un.
 - Le voyant **Radio** de la fenêtre montre ce qui est envoyé. Les deux fonctions se désactivent dans *Réglages → Radio en direct*.

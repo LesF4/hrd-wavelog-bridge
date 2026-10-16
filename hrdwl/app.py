@@ -536,7 +536,7 @@ class App:
         ttk.Checkbutton(frm, text=t("s_qsy_enable"), variable=qsy_var).grid(row=r, column=0, columnspan=3, sticky="w")
         r += 1
         ttk.Label(frm, text=t("s_data_mode")).grid(row=r, column=0, sticky="w")
-        ttk.Combobox(frm, textvariable=data_mode_var, state="readonly", width=44,
+        ttk.Combobox(frm, textvariable=data_mode_var, state="readonly", width=56,
                      values=list(data_modes.values())).grid(row=r, column=1, columnspan=2, sticky="w")
         r += 1
         ttk.Label(frm, text=t("s_rig_hint"), foreground="#666").grid(row=r, column=0, columnspan=3, sticky="w")
