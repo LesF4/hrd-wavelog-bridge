@@ -54,7 +54,7 @@ DEFAULT_CONFIG = {
     "rig_port": 7809,         # HRD Rig Control (TCP, local)
     "qsy_enabled": True,      # laisser Wavelog changer la fréquence (clic sur un spot)
     "qsy_port": 54321,        # port local appelé par le navigateur pour le QSY (comme WaveLogGate)
-    "data_mode": "auto",      # mode envoyé quand la radio est en DATA : auto (JS8 si JS8Call ouvert, sinon FT8)…
+    "data_mode": "none",      # radio en DATA : « none » = aucun mode (le logiciel numérique logge lui-même le bon)
 }
 
 BANDS = [

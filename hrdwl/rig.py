@@ -130,7 +130,28 @@ _MODE_MAP = [
 ]
 
 
-DATA_MODES = ("auto", "FT8", "FT4", "JS8", "PSK31", "RTTY", "none")
+DATA_MODES = ("none", "auto", "FT8", "FT4", "JS8", "PSK31", "RTTY")
+
+# Fréquences d'appel usuelles (fréquence affichée en USB, kHz) des modes numériques.
+# En DATA, la radio ne sait pas quel mode est utilisé : on le déduit de la fréquence.
+_DIAL_KHZ = {
+    "FT8": (1840, 3573, 5357, 7074, 10136, 14074, 18100, 21074, 24915, 28074, 50313, 50323, 144174),
+    "FT4": (3575, 7047.5, 10140, 14080, 18104, 21140, 24919, 28180, 50318, 144170),
+    "JS8": (1842, 3578, 7078, 10130, 14078, 18104, 21078, 24922, 28078, 50318, 144178),
+    "PSK31": (1838, 3580, 7040, 7070, 10142, 14070, 18100, 21070, 24920, 28120, 50250),
+}
+_DIAL_TOLERANCE_KHZ = 1.5
+
+
+def guess_data_mode(freq_hz, js8_open=False):
+    """Mode numérique probable d'après la fréquence (None si inconnue). JS8 a la priorité quand
+    JS8Call est ouvert et que la fréquence est aussi une fréquence JS8 (ex. 18,104 = FT4 et JS8)."""
+    khz = freq_hz / 1000.0
+    matches = [mode for mode, dials in _DIAL_KHZ.items()
+               if any(abs(khz - d) <= _DIAL_TOLERANCE_KHZ for d in dials)]
+    if js8_open and "JS8" in matches:
+        return "JS8"
+    return matches[0] if matches else None
 
 
 def js8call_running():
@@ -144,26 +165,27 @@ def js8call_running():
         return False
 
 
-def wavelog_mode(hrd_mode, data_mode="auto", js8_open=False):
-    """Mode HRD -> mode Wavelog. En DATA (DATA-U…), on envoie le mode numérique choisi
-    (auto : JS8 si JS8Call est ouvert, sinon FT8 ; « none » : rien, Wavelog garde le formulaire)."""
+def wavelog_mode(hrd_mode, data_mode="none", js8_open=False, freq_hz=0):
+    """Mode HRD -> mode Wavelog. En DATA (DATA-U…) : mode numérique choisi dans les réglages, ou en
+    automatique d'après la fréquence d'appel (14,074 = FT8, 14,070 = PSK31…), sinon JS8 si JS8Call
+    est ouvert, sinon rien (Wavelog garde le mode du formulaire). « none » : jamais de mode en DATA."""
     for rx, mode in _MODE_MAP:
         if rx.search(hrd_mode or ""):
             if mode is not None:
                 return mode
-            if data_mode == "none":
+            if data_mode in (None, "", "none"):
                 return None
-            if data_mode in (None, "", "auto"):
-                return "JS8" if js8_open else "FT8"
+            if data_mode == "auto":
+                return guess_data_mode(freq_hz, js8_open) or ("JS8" if js8_open else None)
             return data_mode[:10]
     return (hrd_mode or "")[:10]
 
 
-def radio_payload(key, radio, freq, mode, rx=None, cat_url=None, data_mode="auto", js8_open=False):
+def radio_payload(key, radio, freq, mode, rx=None, cat_url=None, data_mode="none", js8_open=False):
     # Le VFO B n'est PAS une fréquence de réception séparée (sauf en split, que HRD ne signale pas
     # simplement) : on n'envoie que la fréquence principale, sinon Wavelog affiche un faux split.
     p = {"key": key, "radio": radio[:250], "frequency": int(freq)}
-    wl_mode = wavelog_mode(mode, data_mode, js8_open)
+    wl_mode = wavelog_mode(mode, data_mode, js8_open, freq)
     if wl_mode:
         p["mode"] = wl_mode
     if cat_url:
@@ -288,7 +310,7 @@ class RigBridge(threading.Thread):
             try:
                 radio, freq, mode, rx = self.rig.state()
                 self._set_state("ok", "%s %.3f MHz %s" % (radio, freq / 1e6, mode))
-                data_mode = self.cfg.get("data_mode", "auto")
+                data_mode = self.cfg.get("data_mode", "none")
                 if data_mode == "auto" and time.time() - self._js8_checked >= 30:  # coûteux : toutes les 30 s
                     self._js8_open, self._js8_checked = self.js8_check(), time.time()
                 current = (radio, freq, mode, data_mode, self._js8_open)

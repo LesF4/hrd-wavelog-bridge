@@ -55,13 +55,20 @@ class RigClientTests(unittest.TestCase):
             rig.HRDRig(port=free_tcp_port()).state()
 
     def test_modes(self):
-        for hrd, wl in (("DATA-U", "FT8"), ("DATA-L", "FT8"), ("USB-D", "FT8"),
+        for f, expected in ((14074000, "FT8"), (14070500, "PSK31"), (14080000, "FT4"), (14078000, "JS8"),
+                            (7074000, "FT8"), (3573000, "FT8"), (21070000, "PSK31"), (14100000, None)):
+            self.assertEqual(rig.wavelog_mode("DATA-U", "auto", False, f), expected, f)
+        self.assertEqual(rig.wavelog_mode("DATA-U", "auto", True, 18104000), "JS8")  # FT4 ou JS8 : JS8Call ouvert
+        self.assertEqual(rig.wavelog_mode("DATA-U", "auto", False, 18104000), "FT4")
+        self.assertEqual(rig.wavelog_mode("DATA-U", "auto", True, 14100000), "JS8")  # fréquence inconnue
+        for hrd, wl in (("DATA-U", None), ("DATA-L", None), ("USB-D", None),
                         ("USB", "USB"), ("LSB", "LSB"), ("CW-U", "CW"), ("CW-L", "CW"), ("RTTY-L", "RTTY"),
                         ("FM", "FM"), ("AM", "AM"), ("C4FM", "FM")):
             self.assertEqual(rig.wavelog_mode(hrd), wl, hrd)
-        self.assertEqual(rig.wavelog_mode("DATA-U", "auto", js8_open=True), "JS8")
+        self.assertEqual(rig.wavelog_mode("DATA-U", "auto", js8_open=True), "JS8")  # sans fréquence connue
         self.assertEqual(rig.wavelog_mode("DATA-U", "FT4"), "FT4")
         self.assertIsNone(rig.wavelog_mode("DATA-U", "none"))
+        self.assertIsNone(rig.wavelog_mode("DATA-U", freq_hz=14074000))  # par défaut : rien supposé, même sur 14.074
         self.assertEqual(rig.wavelog_mode("USB", "FT4"), "USB")  # le choix DATA ne touche pas la phonie
 
 
@@ -90,7 +97,8 @@ class RigBridgeTests(unittest.TestCase):
     def test_radio_state_reaches_wavelog_and_follows_changes(self):
         self.assertTrue(wait_for(lambda: len(self.wl.radio_updates) >= 1))
         first = self.wl.radio_updates[0]
-        self.assertEqual((first["radio"], first["frequency"], first["mode"]), ("FTDX-101D-MP", 21074000, "FT8"))
+        self.assertEqual((first["radio"], first["frequency"]), ("FTDX-101D-MP", 21074000))
+        self.assertNotIn("mode", first)  # DATA-U : aucun mode supposé par défaut
         self.assertNotIn("frequency_rx", first)  # le VFO B n'est pas une fréquence de réception (pas de faux split)
         self.assertEqual(first["cat_url"], "http://127.0.0.1:%d" % self.qsy_port)
         self.assertEqual(first["key"], fakes.KEY)
@@ -99,6 +107,13 @@ class RigBridgeTests(unittest.TestCase):
         self.fake.freq = 7074000                           # on tourne le bouton
         self.assertTrue(wait_for(lambda: self.wl.radio_updates[-1]["frequency"] == 7074000))
         self.assertIn(("rig", "ok", "FTDX-101D-MP 7.074 MHz DATA-U"), list(self.events.queue))
+
+    def test_voice_mode_is_sent(self):
+        self.assertTrue(wait_for(lambda: len(self.wl.radio_updates) >= 1))
+        self.fake.mode = "LSB"                              # la radio passe en phonie
+        self.assertTrue(wait_for(lambda: self.wl.radio_updates[-1].get("mode") == "LSB"))
+        self.fake.mode = "USB"
+        self.assertTrue(wait_for(lambda: self.wl.radio_updates[-1].get("mode") == "USB"))
 
     def test_qsy_from_wavelog_tunes_the_radio(self):
         self.assertTrue(wait_for(lambda: len(self.wl.radio_updates) >= 1))

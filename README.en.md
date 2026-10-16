@@ -85,7 +85,8 @@ Each line in the list shows its **direction**: *HRD → Wavelog* or *Wavelog →
 If your radio is controlled by **HRD Rig Control**, the app continuously sends its **name, frequency and mode** to Wavelog. HRD keeps control of the radio, there is nothing extra to connect.
 - In Wavelog, on the QSO entry page, pick your radio in the **Radio** list (it has the name HRD gives it, e.g. `FTDX-101D-MP`): **frequency, band and mode fill in by themselves**.
 - **Click a cluster spot** in Wavelog: the radio tunes to the spot. The app receives the browser's request on local port `54321` (like WaveLogGate) and passes it to HRD. Only the frequency is set: **transmit is never controlled**.
-- In **data modes** (DATA-U, DATA-L…), the app never sends "USB": by default it uses **JS8 if JS8Call is open, otherwise FT8**. Adjustable in *Settings → Mode when radio is in DATA* (FT8, FT4, JS8, PSK31, RTTY, or nothing).
+- The **mode** follows what the radio shows: USB, LSB, CW, FM, AM, RTTY.
+- In **DATA** (DATA-U, DATA-L…), the app sends **no mode** (neither "USB" nor a guess): your digital software (WSJT-X, JS8Call, DM-780…) logs the QSO with the right mode. If you prefer, *Settings → Mode when radio is in DATA* can derive it from the calling frequency (FT8, FT4, JS8, PSK31) or force one.
 - The **Radio** light in the window shows what is sent. Both features can be turned off in *Settings → Live radio*.
 
 ### Compare both logs

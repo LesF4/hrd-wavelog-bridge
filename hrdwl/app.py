@@ -427,7 +427,7 @@ class App:
         qsy_var = tk.BooleanVar(value=self.cfg.get("qsy_enabled", True))
         data_modes = {m: (t("dm_auto") if m == "auto" else t("dm_none") if m == "none" else m)
                       for m in rig.DATA_MODES}
-        data_mode_var = tk.StringVar(value=data_modes.get(self.cfg.get("data_mode", "auto"), data_modes["auto"]))
+        data_mode_var = tk.StringVar(value=data_modes.get(self.cfg.get("data_mode", "none"), data_modes["none"]))
 
         r = 0
         ttk.Label(frm, text=t("s_hrd"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w")
