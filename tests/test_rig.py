@@ -55,10 +55,14 @@ class RigClientTests(unittest.TestCase):
             rig.HRDRig(port=free_tcp_port()).state()
 
     def test_modes(self):
-        for hrd, wl in (("DATA-U", None), ("DATA-L", None), ("DATA-FM", None), ("USB-D", None),
+        for hrd, wl in (("DATA-U", "FT8"), ("DATA-L", "FT8"), ("USB-D", "FT8"),
                         ("USB", "USB"), ("LSB", "LSB"), ("CW-U", "CW"), ("CW-L", "CW"), ("RTTY-L", "RTTY"),
                         ("FM", "FM"), ("AM", "AM"), ("C4FM", "FM")):
             self.assertEqual(rig.wavelog_mode(hrd), wl, hrd)
+        self.assertEqual(rig.wavelog_mode("DATA-U", "auto", js8_open=True), "JS8")
+        self.assertEqual(rig.wavelog_mode("DATA-U", "FT4"), "FT4")
+        self.assertIsNone(rig.wavelog_mode("DATA-U", "none"))
+        self.assertEqual(rig.wavelog_mode("USB", "FT4"), "USB")  # le choix DATA ne touche pas la phonie
 
 
 class RigBridgeTests(unittest.TestCase):
@@ -71,6 +75,8 @@ class RigBridgeTests(unittest.TestCase):
         self.events = queue.Queue()
         self.bridge = rig.RigBridge(self.cfg, lambda p: core.send_radio(self.cfg["wavelog_url"], p),
                                     lambda *e: self.events.put(e), interval=0.2, keepalive=60)
+        self.js8_open = False
+        self.bridge.js8_check = lambda: self.js8_open  # pas d'appel au vrai Windows dans les tests
         self.bridge.start()
 
     def tearDown(self):
@@ -84,8 +90,7 @@ class RigBridgeTests(unittest.TestCase):
     def test_radio_state_reaches_wavelog_and_follows_changes(self):
         self.assertTrue(wait_for(lambda: len(self.wl.radio_updates) >= 1))
         first = self.wl.radio_updates[0]
-        self.assertEqual((first["radio"], first["frequency"]), ("FTDX-101D-MP", 21074000))
-        self.assertNotIn("mode", first)  # DATA-U : pas de mode, Wavelog garde FT8/JS8 choisi dans le formulaire
+        self.assertEqual((first["radio"], first["frequency"], first["mode"]), ("FTDX-101D-MP", 21074000, "FT8"))
         self.assertNotIn("frequency_rx", first)  # le VFO B n'est pas une fréquence de réception (pas de faux split)
         self.assertEqual(first["cat_url"], "http://127.0.0.1:%d" % self.qsy_port)
         self.assertEqual(first["key"], fakes.KEY)

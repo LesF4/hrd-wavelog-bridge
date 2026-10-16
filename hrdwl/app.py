@@ -425,6 +425,9 @@ class App:
         station_checks = []  # (id, BooleanVar)
         rig_var = tk.BooleanVar(value=self.cfg.get("rig_enabled", True))
         qsy_var = tk.BooleanVar(value=self.cfg.get("qsy_enabled", True))
+        data_modes = {m: (t("dm_auto") if m == "auto" else t("dm_none") if m == "none" else m)
+                      for m in rig.DATA_MODES}
+        data_mode_var = tk.StringVar(value=data_modes.get(self.cfg.get("data_mode", "auto"), data_modes["auto"]))
 
         r = 0
         ttk.Label(frm, text=t("s_hrd"), font=bold).grid(row=r, column=0, columnspan=3, sticky="w")
@@ -532,6 +535,10 @@ class App:
         r += 1
         ttk.Checkbutton(frm, text=t("s_qsy_enable"), variable=qsy_var).grid(row=r, column=0, columnspan=3, sticky="w")
         r += 1
+        ttk.Label(frm, text=t("s_data_mode")).grid(row=r, column=0, sticky="w")
+        ttk.Combobox(frm, textvariable=data_mode_var, state="readonly", width=44,
+                     values=list(data_modes.values())).grid(row=r, column=1, columnspan=2, sticky="w")
+        r += 1
         ttk.Label(frm, text=t("s_rig_hint"), foreground="#666").grid(row=r, column=0, columnspan=3, sticky="w")
         r += 1
 
@@ -572,7 +579,8 @@ class App:
                 api_key=key_var.get().strip(), station_id=sid,
                 language=next(k for k, lbl in langs.items() if lbl == lang_var.get()),
                 start_minimized=minimized_var.get(), close_to_tray=tray_var.get(),
-                autostart_wanted=autostart_var.get(), rig_enabled=rig_var.get(), qsy_enabled=qsy_var.get())
+                autostart_wanted=autostart_var.get(), rig_enabled=rig_var.get(), qsy_enabled=qsy_var.get(),
+                data_mode=next(k for k, lbl in data_modes.items() if lbl == data_mode_var.get()))
             core.save_config(self.cfg)
             try:
                 if autostart_var.get() != get_autostart():

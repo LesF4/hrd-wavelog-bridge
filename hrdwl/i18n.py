@@ -131,6 +131,9 @@ TEXTS = {
         "log_qsy": "QSY demandé par Wavelog : {mhz} MHz",
         "log_qsy_error": "QSY {mhz} MHz impossible : {err}",
         "log_qsy_port_busy": "Port QSY {port} indisponible ({err}) : les clics sur les spots ne changeront pas la fréquence.",
+        "s_data_mode": "Mode si radio en DATA",
+        "dm_auto": "Automatique (JS8 si JS8Call est ouvert, sinon FT8)",
+        "dm_none": "Ne rien mettre (je choisis dans Wavelog)",
     },
     "en": {
         "status_sent": "✔ Sent to Wavelog",
@@ -258,6 +261,9 @@ TEXTS = {
         "log_qsy": "QSY requested by Wavelog: {mhz} MHz",
         "log_qsy_error": "QSY to {mhz} MHz failed: {err}",
         "log_qsy_port_busy": "QSY port {port} unavailable ({err}): clicking spots will not change the frequency.",
+        "s_data_mode": "Mode when radio is in DATA",
+        "dm_auto": "Automatic (JS8 if JS8Call is open, otherwise FT8)",
+        "dm_none": "Leave it (I pick it in Wavelog)",
     },
 }
 

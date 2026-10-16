@@ -130,18 +130,40 @@ _MODE_MAP = [
 ]
 
 
-def wavelog_mode(hrd_mode):
+DATA_MODES = ("auto", "FT8", "FT4", "JS8", "PSK31", "RTTY", "none")
+
+
+def js8call_running():
+    """Vrai si JS8Call est ouvert (liste des processus Windows, sans fenêtre)."""
+    try:
+        import subprocess
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq js8call.exe", "/NH"], capture_output=True,
+                             text=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        return "js8call.exe" in out.lower()
+    except (OSError, ValueError, Exception):
+        return False
+
+
+def wavelog_mode(hrd_mode, data_mode="auto", js8_open=False):
+    """Mode HRD -> mode Wavelog. En DATA (DATA-U…), on envoie le mode numérique choisi
+    (auto : JS8 si JS8Call est ouvert, sinon FT8 ; « none » : rien, Wavelog garde le formulaire)."""
     for rx, mode in _MODE_MAP:
         if rx.search(hrd_mode or ""):
-            return mode
+            if mode is not None:
+                return mode
+            if data_mode == "none":
+                return None
+            if data_mode in (None, "", "auto"):
+                return "JS8" if js8_open else "FT8"
+            return data_mode[:10]
     return (hrd_mode or "")[:10]
 
 
-def radio_payload(key, radio, freq, mode, rx=None, cat_url=None):
+def radio_payload(key, radio, freq, mode, rx=None, cat_url=None, data_mode="auto", js8_open=False):
     # Le VFO B n'est PAS une fréquence de réception séparée (sauf en split, que HRD ne signale pas
     # simplement) : on n'envoie que la fréquence principale, sinon Wavelog affiche un faux split.
     p = {"key": key, "radio": radio[:250], "frequency": int(freq)}
-    wl_mode = wavelog_mode(mode)
+    wl_mode = wavelog_mode(mode, data_mode, js8_open)
     if wl_mode:
         p["mode"] = wl_mode
     if cat_url:
@@ -227,6 +249,8 @@ class RigBridge(threading.Thread):
         self._last_time = 0.0
         self._state = None
         self.qsy = None
+        self._js8_open, self._js8_checked = False, 0.0
+        self.js8_check = js8call_running  # remplaçable dans les tests
 
     def stop(self):
         self._stop_evt.set()
@@ -264,9 +288,14 @@ class RigBridge(threading.Thread):
             try:
                 radio, freq, mode, rx = self.rig.state()
                 self._set_state("ok", "%s %.3f MHz %s" % (radio, freq / 1e6, mode))
-                current = (radio, freq, mode, rx)
+                data_mode = self.cfg.get("data_mode", "auto")
+                if data_mode == "auto" and time.time() - self._js8_checked >= 30:  # coûteux : toutes les 30 s
+                    self._js8_open, self._js8_checked = self.js8_check(), time.time()
+                current = (radio, freq, mode, data_mode, self._js8_open)
                 if current != self._last_sent or time.time() - self._last_time >= self.keepalive:
-                    if self.send_radio(radio_payload(self.cfg.get("api_key", ""), radio, freq, mode, rx, cat_url)):
+                    payload = radio_payload(self.cfg.get("api_key", ""), radio, freq, mode, rx, cat_url,
+                                            data_mode, self._js8_open)
+                    if self.send_radio(payload):
                         self._last_sent, self._last_time = current, time.time()
             except RigError as e:
                 self._set_state("off", str(e))
