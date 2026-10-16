@@ -55,9 +55,9 @@ class RigClientTests(unittest.TestCase):
             rig.HRDRig(port=free_tcp_port()).state()
 
     def test_modes(self):
-        for hrd, wl in (("DATA-U", "USB"), ("DATA-L", "LSB"), ("USB", "USB"), ("LSB", "LSB"), ("CW-U", "CW"),
-                        ("CW-L", "CW"), ("RTTY-L", "RTTY"), ("FM", "FM"), ("DATA-FM", "FM"), ("AM", "AM"),
-                        ("C4FM", "FM")):
+        for hrd, wl in (("DATA-U", None), ("DATA-L", None), ("DATA-FM", None), ("USB-D", None),
+                        ("USB", "USB"), ("LSB", "LSB"), ("CW-U", "CW"), ("CW-L", "CW"), ("RTTY-L", "RTTY"),
+                        ("FM", "FM"), ("AM", "AM"), ("C4FM", "FM")):
             self.assertEqual(rig.wavelog_mode(hrd), wl, hrd)
 
 
@@ -84,7 +84,8 @@ class RigBridgeTests(unittest.TestCase):
     def test_radio_state_reaches_wavelog_and_follows_changes(self):
         self.assertTrue(wait_for(lambda: len(self.wl.radio_updates) >= 1))
         first = self.wl.radio_updates[0]
-        self.assertEqual((first["radio"], first["frequency"], first["mode"]), ("FTDX-101D-MP", 21074000, "USB"))
+        self.assertEqual((first["radio"], first["frequency"]), ("FTDX-101D-MP", 21074000))
+        self.assertNotIn("mode", first)  # DATA-U : pas de mode, Wavelog garde FT8/JS8 choisi dans le formulaire
         self.assertNotIn("frequency_rx", first)  # le VFO B n'est pas une fréquence de réception (pas de faux split)
         self.assertEqual(first["cat_url"], "http://127.0.0.1:%d" % self.qsy_port)
         self.assertEqual(first["key"], fakes.KEY)

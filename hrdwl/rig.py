@@ -116,11 +116,11 @@ class HRDRig:
             raise RigError("HRD a répondu « %s »" % reply)
 
 
-# Modes affichés par HRD (menu « Mode ») -> modes compris par Wavelog
+# Modes affichés par HRD (menu « Mode ») -> modes compris par Wavelog.
+# Modes « data » (DATA-U, DATA-L, DATA-FM…) : None = on n'envoie PAS de mode. Wavelog laisse alors le mode
+# choisi dans le formulaire (FT8, JS8, PSK…) au lieu de le remplacer par USB, ce qui ferait un faux QSO phonie.
 _MODE_MAP = [
-    (re.compile(r"^(DATA|PKT|DIG)[-_ ]?U|^USB[-_ ]?D", re.I), "USB"),
-    (re.compile(r"^(DATA|PKT|DIG)[-_ ]?L|^LSB[-_ ]?D", re.I), "LSB"),
-    (re.compile(r"^(DATA|PKT)[-_ ]?FM", re.I), "FM"),
+    (re.compile(r"^(DATA|PKT|DIG)|^(USB|LSB)[-_ ]?D", re.I), None),
     (re.compile(r"^USB", re.I), "USB"),
     (re.compile(r"^LSB", re.I), "LSB"),
     (re.compile(r"^CW", re.I), "CW"),
@@ -140,7 +140,10 @@ def wavelog_mode(hrd_mode):
 def radio_payload(key, radio, freq, mode, rx=None, cat_url=None):
     # Le VFO B n'est PAS une fréquence de réception séparée (sauf en split, que HRD ne signale pas
     # simplement) : on n'envoie que la fréquence principale, sinon Wavelog affiche un faux split.
-    p = {"key": key, "radio": radio[:250], "frequency": int(freq), "mode": wavelog_mode(mode)}
+    p = {"key": key, "radio": radio[:250], "frequency": int(freq)}
+    wl_mode = wavelog_mode(mode)
+    if wl_mode:
+        p["mode"] = wl_mode
     if cat_url:
         p["cat_url"] = cat_url
     return p

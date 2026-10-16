@@ -85,6 +85,7 @@ Chaque ligne de la liste indique son **sens** : *HRD → Wavelog* ou *Wavelog �
 Si ta radio est pilotée par **HRD Rig Control**, l'app envoie en continu à Wavelog son **nom, sa fréquence et son mode**. HRD garde le contrôle de la radio, il n'y a rien à brancher en plus.
 - Dans Wavelog, sur la page de saisie d'un QSO, choisis ta radio dans la liste **Radio** (elle porte le nom donné par HRD, par exemple `FTDX-101D-MP`) : la **fréquence, la bande et le mode se remplissent tout seuls**.
 - **Clic sur un spot du cluster** dans Wavelog : la radio passe sur la fréquence du spot. L'app reçoit la demande du navigateur sur le port local `54321` (comme WaveLogGate) et la transmet à HRD. Seule la fréquence est réglée : **l'émission n'est jamais commandée**.
+- En **modes numériques** (DATA-U, DATA-L…), l'app n'envoie pas de mode : Wavelog garde celui que tu choisis (FT8, JS8…), jamais « USB » à la place.
 - Le voyant **Radio** de la fenêtre montre ce qui est envoyé. Les deux fonctions se désactivent dans *Réglages → Radio en direct*.
 
 ### Comparer les deux logs
