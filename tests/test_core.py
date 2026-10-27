@@ -28,6 +28,16 @@ def wait_for(cond, timeout=10):
     return False
 
 
+class UpdateTests(unittest.TestCase):
+    def test_is_newer(self):
+        self.assertTrue(core.is_newer("v1.4.0", "1.3.0"))
+        self.assertTrue(core.is_newer("1.10.0", "1.9.9"))      # 10 > 9, pas un tri alphabétique
+        self.assertFalse(core.is_newer("v1.3.0", "1.3.0"))
+        self.assertFalse(core.is_newer("1.2.4", "1.3.0"))
+        self.assertFalse(core.is_newer("", "1.3.0"))
+        self.assertFalse(core.is_newer("latest", "1.3.0"))
+
+
 class XmlTests(unittest.TestCase):
     def test_contact_from_hrd(self):
         kind, ident, f = core.contact_from_xml(fakes.contact_xml("gm9zz", "abc123"))

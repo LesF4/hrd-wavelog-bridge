@@ -7,6 +7,7 @@ import threading
 import time
 import tkinter as tk
 import traceback
+import webbrowser
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
@@ -101,6 +102,7 @@ class App:
         self.hrd_state = (None, "")
         self.wl_state = None
         self.tray_hint_shown = False
+        self.update_version = ""      # nouvelle version publiée sur GitHub, sinon ""
         self.refresh_scheduled = False
         # Les appels à l'icône de notification (Windows) passent par un thread à part :
         # la fenêtre ne doit jamais attendre Windows.
@@ -132,6 +134,7 @@ class App:
         self.rig_bridge = None
         self.rig_state = ("disabled", "")
         self.start_rig()
+        threading.Thread(target=self._update_loop, daemon=True).start()
         root.after(200, self.poll_events)
         root.after(1000, self._heartbeat)
         if start_minimized or self.cfg["start_minimized"]:
@@ -143,7 +146,7 @@ class App:
     def build_ui(self):
         ttk.Style().configure("Treeview", rowheight=22)
 
-        top = ttk.Frame(self.root, padding=(10, 8))
+        top = self.top = ttk.Frame(self.root, padding=(10, 8))
         top.pack(fill="x")
         self.hrd_lbl = tk.Label(top, text="● HRD Logbook …", font=("Segoe UI", 10, "bold"), fg=ORANGE)
         self.hrd_lbl.pack(side="left")
@@ -153,6 +156,15 @@ class App:
         self.rig_lbl.pack(side="left", padx=(24, 0))
         ttk.Button(top, text=t("btn_about"), command=self.about).pack(side="right")
         ttk.Button(top, text=t("btn_settings"), command=self.open_settings).pack(side="right", padx=6)
+
+        # Bandeau « nouvelle version », affiché seulement quand GitHub en annonce une
+        self.update_bar = tk.Frame(self.root, bg="#e3f2fd", padx=10, pady=6)
+        self.update_lbl = tk.Label(self.update_bar, bg="#e3f2fd", fg="#0d47a1", font=("Segoe UI", 10, "bold"))
+        self.update_lbl.pack(side="left")
+        ttk.Button(self.update_bar, text=t("btn_update_later"), command=self.dismiss_update).pack(side="right")
+        ttk.Button(self.update_bar, text=t("btn_update_download"),
+                   command=lambda: webbrowser.open(core.RELEASES_PAGE)).pack(side="right", padx=6)
+        self.show_update_bar()
 
         cols = [("utc", 120), ("dir", 110), ("call", 95), ("band", 55), ("mode", 70), ("freq", 85),
                 ("status", 160), ("msg", 160)]
@@ -292,6 +304,8 @@ class App:
                 elif kind == "rig":
                     self.rig_state = (ev[1], ev[2])
                     self.set_indicators()
+                elif kind == "update":
+                    self.handle_update(ev[1])
                 elif kind == "call":  # résultat d'un travail de fond à afficher dans la fenêtre
                     ev[1]()
                 elif kind == "show":
@@ -630,6 +644,37 @@ class App:
                 job()
             except Exception:
                 pass
+
+    # ----------------------------------------------------------------- nouvelle version
+    def _update_loop(self):
+        """Au démarrage puis une fois par jour : une version plus récente est-elle publiée ?"""
+        time.sleep(5)
+        while True:
+            try:
+                latest = core.fetch_latest_version()
+                if core.is_newer(latest):
+                    self.events.put(("update", latest))
+                time.sleep(86400)
+            except Exception:
+                time.sleep(3600)                           # pas d'Internet ou GitHub injoignable : plus tard
+
+    def handle_update(self, version):
+        if version == self.update_version:
+            return
+        self.update_version = version
+        self.show_update_bar()
+        self.log(t("log_update", version=version))
+        self.notify(t("update_banner", version=version, current=core.APP_VERSION))
+
+    def show_update_bar(self):
+        if self.update_version:
+            self.update_lbl.configure(text=t("update_banner", version=self.update_version, current=core.APP_VERSION))
+            self.update_bar.pack(fill="x", after=self.top)
+        else:
+            self.update_bar.pack_forget()
+
+    def dismiss_update(self):
+        self.update_bar.pack_forget()
 
     def notify(self, text):
         if self.tray and not self.root.winfo_viewable():

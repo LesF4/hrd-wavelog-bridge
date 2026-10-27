@@ -34,6 +34,8 @@ APP_NAME = "HRDtoWavelog"
 APP_TITLE = "HRD Logbook → Wavelog"
 APP_VERSION = "1.3.0"
 APP_URL = "https://github.com/LesF4/hrd-wavelog-bridge"
+RELEASES_API = "https://api.github.com/repos/LesF4/hrd-wavelog-bridge/releases/latest"
+RELEASES_PAGE = APP_URL + "/releases/latest"
 TABLE = "TABLE_HRD_CONTACTS_V07"
 
 DEFAULT_CONFIG = {
@@ -1112,3 +1114,25 @@ class Syncer(threading.Thread):
         if to_wavelog:
             self.post("log", t("log_queued_to_wavelog", n=len(to_wavelog)))
         self.save_history()
+
+
+# --------------------------------------------------------------------------- nouvelle version
+
+def version_tuple(v):
+    """« v1.10.2 » -> (1, 10, 2) ; ce qui n'est pas un nombre est ignoré."""
+    return tuple(int(n) for n in re.findall(r"\d+", str(v or ""))[:4])
+
+
+def is_newer(latest, current=APP_VERSION):
+    return bool(version_tuple(latest)) and version_tuple(latest) > version_tuple(current)
+
+
+def fetch_latest_version(timeout=10):
+    """Dernière version publiée sur GitHub (une seule requête, rien n'est envoyé) -> « 1.4.0 » ou ""."""
+    req = urllib.request.Request(RELEASES_API, headers={"User-Agent": "%s/%s" % (APP_NAME, APP_VERSION),
+                                                        "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        data = json.loads(r.read().decode("utf-8", "replace"))
+    if data.get("draft") or data.get("prerelease"):
+        return ""
+    return str(data.get("tag_name") or "").lstrip("vV")

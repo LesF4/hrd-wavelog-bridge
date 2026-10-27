@@ -2,6 +2,7 @@
 
 [![Latest release](https://img.shields.io/github/v/release/LesF4/hrd-wavelog-bridge?label=version&color=2e7d32)](https://github.com/LesF4/hrd-wavelog-bridge/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/LesF4/hrd-wavelog-bridge/total?label=downloads&color=2e7d32)](https://github.com/LesF4/hrd-wavelog-bridge/releases)
+[![Downloads of the latest version](https://img.shields.io/github/downloads/LesF4/hrd-wavelog-bridge/latest/total?label=latest%20version&color=2e7d32)](https://github.com/LesF4/hrd-wavelog-bridge/releases/latest)
 [![MIT licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 
 [🇫🇷 Français](README.md) · 🇬🇧 English
@@ -24,6 +25,7 @@ Made by **F4MAJ / Jean-Bernard** for the [Les F4](https://github.com/LesF4) comm
 - **Catch up on the past:** *Compare both logs…* shows what is missing on each side and adds it in one click.
 - **Privacy-friendly:** only QSO details travel. Your contacts' address, e-mail and notes stay in HRD.
 - **Nothing gets lost:** Internet down or HRD closed? QSOs wait and go as soon as possible.
+- **Always up to date:** when a new version is out, a banner tells you in the window, with a "Download" button.
 - **Bilingual** English / French, **free and open source** (MIT licence).
 
 ## Download
